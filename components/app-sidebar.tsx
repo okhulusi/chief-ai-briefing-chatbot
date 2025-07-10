@@ -44,16 +44,21 @@ export function AppSidebar({ user }: { user: User | undefined }) {
                   variant="ghost"
                   type="button"
                   className="p-2 h-fit"
-                  onClick={() => {
+                  onClick={async () => {
                     setOpenMobile(false);
-                    router.push('/');
-                    router.refresh();
+                    // Call API to create a new briefing chat and route to it
+                    const res = await fetch('/api/briefing-chat', { method: 'POST' });
+                    if (res.ok) {
+                      const { chatId } = await res.json();
+                      router.push(`/chat/${chatId}`);
+                      router.refresh();
+                    }
                   }}
                 >
                   <PlusIcon />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent align="end">New Chat</TooltipContent>
+              <TooltipContent align="end">Generate Daily Briefing</TooltipContent>
             </Tooltip>
           </div>
         </SidebarMenu>

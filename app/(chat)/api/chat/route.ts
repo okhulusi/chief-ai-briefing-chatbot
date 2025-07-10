@@ -104,11 +104,90 @@ export async function POST(request: Request) {
 
     const chat = await getChatById({ id });
 
-    if (!chat) {
+    // --- Briefing Book MVP: Detect first user message in a 'Briefing' chat ---
+    const isBriefingChat = chat?.title?.toLowerCase().startsWith('briefing');
+    const messagesFromDb = await getMessagesByChatId({ id });
+    const uiMessages = [...convertToUIMessages(messagesFromDb), message];
+    const isFirstUserMessage = isBriefingChat && messagesFromDb.filter((m) => m.role === 'user').length === 0 && message.role === 'user';
+
+    if (isFirstUserMessage) {
+      // Try to parse the date from the user's message
+      const dateText = (message.parts?.[0] && 'text' in message.parts[0]) ? message.parts[0].text?.trim() : undefined;
+      let parsedDate: Date | null = null;
+      if (dateText) {
+        // Try YYYY-MM-DD
+        const isoMatch = dateText.match(/\d{4}-\d{2}-\d{2}/);
+        if (isoMatch) {
+          parsedDate = new Date(isoMatch[0]);
+        } else {
+          // Try natural language (e.g., 'tomorrow', 'next Monday', 'July 10, 2025')
+          try {
+            parsedDate = new Date(dateText);
+            if (Number.isNaN(parsedDate.getTime())) parsedDate = null;
+          } catch {}
+        }
+      }
+      if (!parsedDate) {
+        // If not a valid date, reply with an error prompt
+        return Response.json({
+          messages: [
+            {
+              id: generateUUID(),
+              role: 'assistant' as const,
+              parts: [{ type: 'text', text: 'Sorry, I could not understand the date. Please reply with a date in YYYY-MM-DD format or a clear natural language date.' }],
+              
+            } satisfies ChatMessage,
+          ],
+        });
+      }
+      // --- Fetch Google Calendar events ---
+      const accessToken = session.accessToken;
+      if (!accessToken) {
+        return Response.json({
+          messages: [
+            {
+              id: generateUUID(),
+              role: 'assistant' as const,
+              parts: [{ type: 'text', text: 'Could not access your Google Calendar. Please re-login with Google.' }],
+              
+            } satisfies ChatMessage,
+          ],
+        });
+      }
+      let events: any[] = [];
+      try {
+        const { fetchGoogleCalendarEvents } = await import('@/lib/google/calendar');
+        events = await fetchGoogleCalendarEvents(accessToken, parsedDate);
+      } catch (err) {
+        return Response.json({
+          messages: [
+            {
+              id: generateUUID(),
+              role: 'assistant' as const,
+              parts: [{ type: 'text', text: 'Failed to fetch your schedule from Google Calendar.' }],
+              
+            } satisfies ChatMessage,
+          ],
+        });
+      }
+      // --- Compose prompt for OpenAI ---
+      const scheduleSummary = events.length
+        ? events.map((e) => `- ${e.summary || 'Untitled'} (${e.start?.dateTime || e.start?.date || ''} to ${e.end?.dateTime || e.end?.date || ''})`).join('\n')
+        : 'No events found.';
+      const openAIPrompt = `You are a government assistant. Here is the official's schedule for ${parsedDate.toDateString()}:\n${scheduleSummary}\n\nGenerate a briefing book for this day, including logistics, background, context, and talking points for each event.`;
+      // --- Call OpenAI (using existing chat logic) ---
+      // Insert the AI prompt as a system message and continue as normal
+      const aiMessage: ChatMessage = {
+        id: generateUUID(),
+        role: 'system',
+        parts: [{ type: 'text', text: openAIPrompt }],
+        
+      };
+      uiMessages.push(aiMessage);
+      // Continue with normal chat logic using uiMessages
       const title = await generateTitleFromUserMessage({
         message,
       });
-
       await saveChat({
         id,
         userId: session.user.id,
@@ -121,8 +200,8 @@ export async function POST(request: Request) {
       }
     }
 
-    const messagesFromDb = await getMessagesByChatId({ id });
-    const uiMessages = [...convertToUIMessages(messagesFromDb), message];
+    const messagesFromDbFinal = await getMessagesByChatId({ id });
+    const uiMessagesFinal = [...convertToUIMessages(messagesFromDbFinal), message];
 
     const { longitude, latitude, city, country } = geolocation(request);
 

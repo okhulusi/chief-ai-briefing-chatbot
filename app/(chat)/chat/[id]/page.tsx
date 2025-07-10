@@ -3,6 +3,7 @@ import { notFound, redirect } from 'next/navigation';
 
 import { auth } from '@/app/(auth)/auth';
 import { Chat } from '@/components/chat';
+import { getBriefingBotInitialMessage } from './briefing-bot-util';
 import { getChatById, getMessagesByChatId } from '@/lib/db/queries';
 import { DataStreamHandler } from '@/components/data-stream-handler';
 import { DEFAULT_CHAT_MODEL } from '@/lib/ai/models';
@@ -37,7 +38,11 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
     id,
   });
 
-  const uiMessages = convertToUIMessages(messagesFromDb);
+  let uiMessages = convertToUIMessages(messagesFromDb);
+const initialBotMsg = getBriefingBotInitialMessage(chat.title, uiMessages);
+if (initialBotMsg) {
+  uiMessages = [initialBotMsg, ...uiMessages];
+}
 
   const cookieStore = await cookies();
   const chatModelFromCookie = cookieStore.get('chat-model');

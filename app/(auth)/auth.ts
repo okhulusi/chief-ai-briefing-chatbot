@@ -44,7 +44,8 @@ export const {
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
       authorization: {
         params: {
-          scope: 'openid email profile https://www.googleapis.com/auth/calendar.readonly',
+          scope:
+            'openid email profile https://www.googleapis.com/auth/calendar.readonly',
         },
       },
       profile(profile) {
@@ -79,15 +80,17 @@ export const {
         return { ...user, type: 'regular' };
       },
     }),
-
   ],
   callbacks: {
-    async jwt({ token, user }) {
+    async jwt({ token, user, account }) {
       if (user) {
         token.id = user.id as string;
         token.type = user.type;
       }
-
+      // Persist Google accessToken
+      if (account && account.provider === 'google') {
+        token.accessToken = account.access_token;
+      }
       return token;
     },
     async session({ session, token }) {
@@ -95,7 +98,10 @@ export const {
         session.user.id = token.id;
         session.user.type = token.type;
       }
-
+      // Expose Google accessToken to session
+      if (typeof token.accessToken === 'string') {
+        session.accessToken = token.accessToken;
+      }
       return session;
     },
   },
