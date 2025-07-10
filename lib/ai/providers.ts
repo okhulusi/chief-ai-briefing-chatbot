@@ -23,16 +23,35 @@ export const myProvider = isTestEnvironment
     })
   : customProvider({
       languageModels: {
-        'chat-model': openai('gpt-4o'),
+        'chat-model': {
+  ...(openai('gpt-4o') as any),
+  supportedUrls: [/^https:\/\/api\.openai\.com\/v1\/chat\/completions$/],
+  specificationVersion: 'v2',
+},
         'chat-model-reasoning': wrapLanguageModel({
-          model: openai('gpt-4o'),
-          middleware: extractReasoningMiddleware({ tagName: 'think' }),
-        }),
-        'title-model': openai('gpt-4o'),
-        'artifact-model': openai('gpt-4o'),
+  model: {
+    ...(openai('gpt-4o') as any),
+    supportedUrls: [/^https:\/\/api\.openai\.com\/v1\/chat\/completions$/],
+    specificationVersion: 'v2',
+  },
+  middleware: extractReasoningMiddleware({ tagName: 'think' }),
+}),
+        'title-model': {
+  ...(openai('gpt-4o') as any),
+  supportedUrls: [/^https:\/\/api\.openai\.com\/v1\/chat\/completions$/],
+  specificationVersion: 'v2',
+},
+        'artifact-model': {
+  ...(openai('gpt-4o') as any),
+  supportedUrls: [/^https:\/\/api\.openai\.com\/v1\/chat\/completions$/],
+  specificationVersion: 'v2',
+},
       },
       imageModels: {
         // OpenAI image generation (DALL·E)
-        'small-model': openai.imageModel('dall-e-3'),
+        'small-model': {
+  ...(openai.imageModel('dall-e-3') as any),
+  specificationVersion: 'v2',
+},
       },
     });
