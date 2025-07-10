@@ -126,7 +126,7 @@ export function SidebarUserNav({ user }: { user: User }) {
 });
                 }}
               >
-                'Sign out'
+                Sign out
               </button>
             </DropdownMenuItem>
           </DropdownMenuContent>
