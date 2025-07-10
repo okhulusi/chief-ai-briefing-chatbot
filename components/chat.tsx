@@ -3,14 +3,15 @@
 import { DefaultChatTransport } from 'ai';
 import { useChat } from '@ai-sdk/react';
 import { useEffect, useState } from 'react';
-import useSWR, { useSWRConfig } from 'swr';
+import { useSWRConfig } from 'swr';
 import { ChatHeader } from '@/components/chat-header';
-import type { Vote } from '@/lib/db/schema';
+
 import { fetcher, fetchWithErrorHandlers, generateUUID } from '@/lib/utils';
 import { Artifact } from './artifact';
+
 import { MultimodalInput } from './multimodal-input';
 import { Messages } from './messages';
-import type { VisibilityType } from './visibility-selector';
+
 import { useArtifactSelector } from '@/hooks/use-artifact';
 import { unstable_serialize } from 'swr/infinite';
 import { getChatHistoryPaginationKey } from './sidebar-history';
@@ -35,7 +36,7 @@ export function Chat({
   id: string;
   initialMessages: ChatMessage[];
   initialChatModel: string;
-  initialVisibilityType: VisibilityType;
+  initialVisibilityType: string;
   isReadonly: boolean;
   session: Session;
   autoResume: boolean;
@@ -111,12 +112,6 @@ export function Chat({
     }
   }, [query, sendMessage, hasAppendedQuery, id]);
 
-  const { data: votes } = useSWR<Array<Vote>>(
-    messages.length >= 2 ? `/api/vote?chatId=${id}` : null,
-    fetcher,
-  );
-
-
   const isArtifactVisible = useArtifactSelector((state) => state.isVisible);
 
   useAutoResume({
@@ -132,7 +127,6 @@ export function Chat({
         <ChatHeader
           chatId={id}
           selectedModelId={initialChatModel}
-          selectedVisibilityType={initialVisibilityType}
           isReadonly={isReadonly}
           session={session}
         />
@@ -140,7 +134,6 @@ export function Chat({
         <Messages
           chatId={id}
           status={status}
-          votes={votes}
           messages={messages}
           setMessages={setMessages}
           regenerate={regenerate}
@@ -176,7 +169,6 @@ export function Chat({
         messages={messages}
         setMessages={setMessages}
         regenerate={regenerate}
-        votes={votes}
         isReadonly={isReadonly}
         selectedVisibilityType={visibilityType}
       />

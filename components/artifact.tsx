@@ -10,7 +10,7 @@ import {
 } from 'react';
 import useSWR, { useSWRConfig } from 'swr';
 import { useDebounceCallback, useWindowSize } from 'usehooks-ts';
-import type { Document, Vote } from '@/lib/db/schema';
+import type { Document } from '@/lib/db/schema';
 import { fetcher } from '@/lib/utils';
 import { MultimodalInput } from './multimodal-input';
 import { Toolbar } from './toolbar';
@@ -26,7 +26,7 @@ import { sheetArtifact } from '@/artifacts/sheet/client';
 import { textArtifact } from '@/artifacts/text/client';
 import equal from 'fast-deep-equal';
 import type { UseChatHelpers } from '@ai-sdk/react';
-import type { VisibilityType } from './visibility-selector';
+
 import type { ChatMessage } from '@/lib/types';
 
 export const artifactDefinitions = [
@@ -63,7 +63,7 @@ function PureArtifact({
   messages,
   setMessages,
   regenerate,
-  votes,
+
   isReadonly,
   selectedVisibilityType,
 }: {
@@ -75,11 +75,11 @@ function PureArtifact({
 
   messages: ChatMessage[];
   setMessages: UseChatHelpers<ChatMessage>['setMessages'];
-  votes: Array<Vote> | undefined;
+
   sendMessage: UseChatHelpers<ChatMessage>['sendMessage'];
   regenerate: UseChatHelpers<ChatMessage>['regenerate'];
   isReadonly: boolean;
-  selectedVisibilityType: VisibilityType;
+  selectedVisibilityType: string;
 }) {
   const { artifact, setArtifact, metadata, setMetadata } = useArtifact();
 
@@ -311,8 +311,7 @@ function PureArtifact({
               <div className="flex flex-col h-full justify-between items-center">
                 <ArtifactMessages
                   chatId={chatId}
-                  status={status}
-                  votes={votes}
+                  status={status as UseChatHelpers<ChatMessage>["status"]}
                   messages={messages}
                   setMessages={setMessages}
                   regenerate={regenerate}
@@ -498,7 +497,7 @@ function PureArtifact({
 
 export const Artifact = memo(PureArtifact, (prevProps, nextProps) => {
   if (prevProps.status !== nextProps.status) return false;
-  if (!equal(prevProps.votes, nextProps.votes)) return false;
+
   if (prevProps.input !== nextProps.input) return false;
   if (!equal(prevProps.messages, nextProps.messages.length)) return false;
   if (prevProps.selectedVisibilityType !== nextProps.selectedVisibilityType)

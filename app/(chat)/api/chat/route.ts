@@ -36,7 +36,6 @@ import { after } from 'next/server';
 import { ChatSDKError } from '@/lib/errors';
 import type { ChatMessage } from '@/lib/types';
 import type { ChatModel } from '@/lib/ai/models';
-import type { VisibilityType } from '@/components/visibility-selector';
 
 export const maxDuration = 60;
 
@@ -82,7 +81,7 @@ export async function POST(request: Request) {
       id: string;
       message: ChatMessage;
       selectedChatModel: ChatModel['id'];
-      selectedVisibilityType: VisibilityType;
+      selectedVisibilityType: string;
     } = requestBody;
 
     const session = await auth();

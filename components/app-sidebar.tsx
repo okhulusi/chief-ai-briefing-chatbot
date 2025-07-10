@@ -15,7 +15,7 @@ import {
   SidebarMenu,
   useSidebar,
 } from '@/components/ui/sidebar';
-import Link from 'next/link';
+
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 
 export function AppSidebar({ user }: { user: User | undefined }) {
@@ -27,17 +27,9 @@ export function AppSidebar({ user }: { user: User | undefined }) {
       <SidebarHeader>
         <SidebarMenu>
           <div className="flex flex-row justify-between items-center">
-            <Link
-              href="/"
-              onClick={() => {
-                setOpenMobile(false);
-              }}
-              className="flex flex-row gap-3 items-center"
-            >
-              <span className="text-lg font-semibold px-2 hover:bg-muted rounded-md cursor-pointer">
-                Chatbot
-              </span>
-            </Link>
+            <span className="text-lg font-semibold px-2">
+              Chatbot
+            </span>
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
