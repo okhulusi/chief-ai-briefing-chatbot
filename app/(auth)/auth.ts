@@ -1,6 +1,7 @@
 import { compare } from 'bcrypt-ts';
 import NextAuth, { type DefaultSession } from 'next-auth';
 import Credentials from 'next-auth/providers/credentials';
+import GoogleProvider from 'next-auth/providers/google';
 import { createGuestUser, getUser } from '@/lib/db/queries';
 import { authConfig } from './auth.config';
 import { DUMMY_PASSWORD } from '@/lib/constants';
@@ -38,6 +39,22 @@ export const {
 } = NextAuth({
   ...authConfig,
   providers: [
+    GoogleProvider({
+      clientId: process.env.GOOGLE_CLIENT_ID!,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+      authorization: {
+        params: {
+          scope: 'openid email profile https://www.googleapis.com/auth/calendar.readonly',
+        },
+      },
+      profile(profile) {
+        return {
+          id: profile.sub,
+          email: profile.email,
+          type: 'regular', // All Google users are treated as 'regular' users
+        };
+      },
+    }),
     Credentials({
       credentials: {},
       async authorize({ email, password }: any) {

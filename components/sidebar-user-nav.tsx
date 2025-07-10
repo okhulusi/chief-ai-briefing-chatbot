@@ -3,7 +3,7 @@
 import { ChevronUp } from 'lucide-react';
 import Image from 'next/image';
 import type { User } from 'next-auth';
-import { signOut, useSession } from 'next-auth/react';
+import { signOut, useSession, signIn } from 'next-auth/react';
 import { useTheme } from 'next-themes';
 
 import {
@@ -71,6 +71,33 @@ export function SidebarUserNav({ user }: { user: User }) {
             side="top"
             className="w-[--radix-popper-anchor-width]"
           >
+            <DropdownMenuItem
+              data-testid="user-nav-item-calendar"
+              className="cursor-pointer"
+              onSelect={async () => {
+                try {
+                  const res = await fetch('/api/calendar/import');
+                  const json = await res.json();
+                  if (res.status === 401) {
+                    signIn('google');
+                    return;
+                  }
+                  if (!res.ok) throw new Error(json.error || 'Failed to import calendar');
+                  if (!json.events || json.events.length === 0) {
+                    toast({ type: 'success', description: 'No events found for today!' });
+                  } else {
+                    toast({
+                      type: 'success',
+                      description: `Imported ${json.events.length} event(s):\n${json.events.map((e: any) => e.summary).join(', ')}`,
+                    });
+                  }
+                } catch (err: any) {
+                  toast({ type: 'error', description: err.message || 'Failed to import calendar' });
+                }
+              }}
+            >
+              Import Calendar
+            </DropdownMenuItem>
             <DropdownMenuItem
               data-testid="user-nav-item-theme"
               className="cursor-pointer"
