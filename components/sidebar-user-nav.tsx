@@ -3,7 +3,7 @@
 import { ChevronUp } from 'lucide-react';
 import Image from 'next/image';
 import type { User } from 'next-auth';
-import { signOut, useSession } from 'next-auth/react';
+import { signOut, useSession, signIn } from 'next-auth/react';
 import { useTheme } from 'next-themes';
 
 import {
@@ -21,14 +21,14 @@ import {
 import { useRouter } from 'next/navigation';
 import { toast } from './toast';
 import { LoaderIcon } from './icons';
-import { guestRegex } from '@/lib/constants';
+
 
 export function SidebarUserNav({ user }: { user: User }) {
   const router = useRouter();
   const { data, status } = useSession();
   const { setTheme, resolvedTheme } = useTheme();
 
-  const isGuest = guestRegex.test(data?.user?.email ?? '');
+  
 
   return (
     <SidebarMenu>
@@ -60,7 +60,7 @@ export function SidebarUserNav({ user }: { user: User }) {
                   className="rounded-full"
                 />
                 <span data-testid="user-email" className="truncate">
-                  {isGuest ? 'Guest' : user?.email}
+                  {user?.email || 'User'}
                 </span>
                 <ChevronUp className="ml-auto" />
               </SidebarMenuButton>
@@ -71,6 +71,33 @@ export function SidebarUserNav({ user }: { user: User }) {
             side="top"
             className="w-[--radix-popper-anchor-width]"
           >
+            <DropdownMenuItem
+              data-testid="user-nav-item-calendar"
+              className="cursor-pointer"
+              onSelect={async () => {
+                try {
+                  const res = await fetch('/api/calendar/import');
+                  const json = await res.json();
+                  if (res.status === 401) {
+                    signIn('google');
+                    return;
+                  }
+                  if (!res.ok) throw new Error(json.error || 'Failed to import calendar');
+                  if (!json.events || json.events.length === 0) {
+                    toast({ type: 'success', description: 'No events found for today!' });
+                  } else {
+                    toast({
+                      type: 'success',
+                      description: `Imported ${json.events.length} event(s):\n${json.events.map((e: any) => e.summary).join(', ')}`,
+                    });
+                  }
+                } catch (err: any) {
+                  toast({ type: 'error', description: err.message || 'Failed to import calendar' });
+                }
+              }}
+            >
+              Import Calendar
+            </DropdownMenuItem>
             <DropdownMenuItem
               data-testid="user-nav-item-theme"
               className="cursor-pointer"
@@ -94,16 +121,12 @@ export function SidebarUserNav({ user }: { user: User }) {
                     return;
                   }
 
-                  if (isGuest) {
-                    router.push('/login');
-                  } else {
-                    signOut({
-                      redirectTo: '/',
-                    });
-                  }
+                  signOut({
+  redirectTo: '/',
+});
                 }}
               >
-                {isGuest ? 'Login to your account' : 'Sign out'}
+                Sign out
               </button>
             </DropdownMenuItem>
           </DropdownMenuContent>
