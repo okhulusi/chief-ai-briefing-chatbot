@@ -1,4 +1,5 @@
 import 'server-only';
+import crypto from 'node:crypto';
 
 import {
   and,
@@ -19,19 +20,13 @@ import {
   user,
   chat,
   type User,
-  document,
-  type Suggestion,
-  suggestion,
   message,
-  vote,
   type DBMessage,
   type Chat,
   stream,
 } from './schema';
-import type { ArtifactKind } from '@/components/artifact';
-import { generateUUID } from '../utils';
 import { generateHashedPassword } from './utils';
-import type { VisibilityType } from '@/components/visibility-selector';
+
 import { ChatSDKError } from '../errors';
 
 // Optionally, if not using email/pass login, you can
@@ -53,6 +48,39 @@ export async function getUser(email: string): Promise<Array<User>> {
   }
 }
 
+
+export async function findOrCreateUserByEmail(email: string): Promise<User> {
+  try {
+    // Try to find the user first
+    const users = await getUser(email);
+    
+    if (users.length > 0) {
+      console.log(`Found existing user with email ${email}, ID: ${users[0].id}`);
+      return users[0];
+    }
+    
+    // If user doesn't exist, create them
+    console.log(`Creating new user with email ${email}`);
+    const userId = crypto.randomUUID();
+    
+    await db.insert(user).values({
+      id: userId,
+      email
+    });
+    
+    // Return the newly created user
+    const newUsers = await getUser(email);
+    if (newUsers.length === 0) {
+      throw new Error(`Failed to create user with email ${email}`);
+    }
+    
+    return newUsers[0];
+  } catch (error) {
+    console.error('Error in findOrCreateUserByEmail:', error);
+    throw new ChatSDKError('bad_request:database', 'Failed to find or create user');
+  }
+}
+
 export async function createUser(email: string, password: string) {
   const hashedPassword = generateHashedPassword(password);
 
@@ -63,20 +91,109 @@ export async function createUser(email: string, password: string) {
   }
 }
 
-export async function createGuestUser() {
-  const email = `guest-${Date.now()}`;
-  const password = generateHashedPassword(generateUUID());
-
+export async function updateUserGoogleTokens({
+  userId,
+  accessToken,
+  refreshToken,
+  expiryTime,
+}: {
+  userId: string;
+  accessToken: string;
+  refreshToken?: string;
+  expiryTime?: number;
+}) {
   try {
-    return await db.insert(user).values({ email, password }).returning({
-      id: user.id,
-      email: user.email,
+    console.log(`Updating Google tokens for user ${userId}`);
+    console.log('Token data:', {
+      accessToken: accessToken ? 'exists' : 'missing',
+      refreshToken: refreshToken ? 'exists' : 'missing',
+      expiryTime: expiryTime || 'not provided'
     });
+    
+    // Format the expiry time as a date if provided
+    const expiryDate = expiryTime ? new Date(expiryTime) : null;
+    
+    // Create update values object
+    const updateValues: Record<string, any> = {
+      googleAccessToken: accessToken,
+      googleTokenExpiry: expiryDate
+    };
+    
+    // Add refresh token if provided
+    if (refreshToken) {
+      updateValues.googleRefreshToken = refreshToken;
+    }
+    
+    console.log('Update values:', updateValues);
+    
+    // Use Drizzle ORM to update the user
+    const result = await db
+      .update(user)
+      .set(updateValues)
+      .where(eq(user.id, userId))
+      .returning({ id: user.id });
+    
+    console.log('Update result:', result);
+    
+    // Verify the update by fetching the user again
+    const updatedUser = await db
+      .select({
+        id: user.id,
+        email: user.email,
+        googleAccessToken: user.googleAccessToken,
+        googleRefreshToken: user.googleRefreshToken,
+        googleTokenExpiry: user.googleTokenExpiry,
+      })
+      .from(user)
+      .where(eq(user.id, userId));
+    
+    if (updatedUser.length > 0) {
+      console.log('Updated user verified:', {
+        id: updatedUser[0].id,
+        email: updatedUser[0].email,
+        hasAccessToken: !!updatedUser[0].googleAccessToken,
+        hasRefreshToken: !!updatedUser[0].googleRefreshToken,
+        tokenExpiry: updatedUser[0].googleTokenExpiry
+      });
+    } else {
+      console.log('No user found after update, this is unexpected');
+    }
+    
+    return result;
   } catch (error) {
-    throw new ChatSDKError(
-      'bad_request:database',
-      'Failed to create guest user',
-    );
+    console.error('Failed to update Google tokens:', error);
+    throw new ChatSDKError('bad_request:database', 'Failed to update Google tokens');
+  }
+}
+
+export async function getUserGoogleTokens(userId: string) {
+  try {
+    console.log(`Getting Google tokens for user ${userId}`);
+    const result = await db
+      .select({
+        accessToken: user.googleAccessToken,
+        refreshToken: user.googleRefreshToken,
+        tokenExpiry: user.googleTokenExpiry,
+      })
+      .from(user)
+      .where(eq(user.id, userId));
+      
+    if (result.length === 0) {
+      console.log(`No user found with ID ${userId}`);
+      return null;
+    }
+    
+    console.log('Retrieved tokens:', {
+      hasAccessToken: !!result[0].accessToken,
+      hasRefreshToken: !!result[0].refreshToken,
+      tokenExpiry: result[0].tokenExpiry
+    });
+    
+    return result[0];
+  } catch (error) {
+    console.error('Failed to get Google tokens:', error);
+    // Don't throw an error, just return null to allow graceful fallback
+    return null;
   }
 }
 
@@ -89,7 +206,7 @@ export async function saveChat({
   id: string;
   userId: string;
   title: string;
-  visibility: VisibilityType;
+  visibility: 'private';
 }) {
   try {
     return await db.insert(chat).values({
@@ -106,20 +223,19 @@ export async function saveChat({
 
 export async function deleteChatById({ id }: { id: string }) {
   try {
-    await db.delete(vote).where(eq(vote.chatId, id));
+    // First delete all messages associated with this chat
     await db.delete(message).where(eq(message.chatId, id));
+    
+    // Then delete all streams associated with this chat
     await db.delete(stream).where(eq(stream.chatId, id));
-
-    const [chatsDeleted] = await db
-      .delete(chat)
-      .where(eq(chat.id, id))
-      .returning();
-    return chatsDeleted;
+    
+    // Finally delete the chat itself
+    const result = await db.delete(chat).where(eq(chat.id, id)).returning();
+    return result[0];
   } catch (error) {
-    throw new ChatSDKError(
-      'bad_request:database',
-      'Failed to delete chat by id',
-    );
+    // eslint-disable-next-line no-console
+    console.error('deleteChatById error', error);
+    return null;
   }
 }
 
@@ -204,6 +320,8 @@ export async function getChatById({ id }: { id: string }) {
     const [selectedChat] = await db.select().from(chat).where(eq(chat.id, id));
     return selectedChat;
   } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error('getChatById error', error);
     throw new ChatSDKError('bad_request:database', 'Failed to get chat by id');
   }
 }
@@ -228,179 +346,54 @@ export async function getMessagesByChatId({ id }: { id: string }) {
       .where(eq(message.chatId, id))
       .orderBy(asc(message.createdAt));
   } catch (error) {
-    throw new ChatSDKError(
-      'bad_request:database',
-      'Failed to get messages by chat id',
-    );
+    // eslint-disable-next-line no-console
+    console.error('getMessagesByChatId error', error);
+    return [];
   }
 }
 
-export async function voteMessage({
-  chatId,
-  messageId,
-  type,
-}: {
-  chatId: string;
-  messageId: string;
-  type: 'up' | 'down';
-}) {
-  try {
-    const [existingVote] = await db
-      .select()
-      .from(vote)
-      .where(and(eq(vote.messageId, messageId)));
-
-    if (existingVote) {
-      return await db
-        .update(vote)
-        .set({ isUpvoted: type === 'up' })
-        .where(and(eq(vote.messageId, messageId), eq(vote.chatId, chatId)));
-    }
-    return await db.insert(vote).values({
-      chatId,
-      messageId,
-      isUpvoted: type === 'up',
-    });
-  } catch (error) {
-    throw new ChatSDKError('bad_request:database', 'Failed to vote message');
-  }
+// Voting no longer supported
+export async function voteMessage() {
+  return null;
 }
-
-export async function getVotesByChatId({ id }: { id: string }) {
-  try {
-    return await db.select().from(vote).where(eq(vote.chatId, id));
-  } catch (error) {
-    throw new ChatSDKError(
-      'bad_request:database',
-      'Failed to get votes by chat id',
-    );
-  }
-}
-
-export async function saveDocument({
-  id,
-  title,
-  kind,
-  content,
-  userId,
-}: {
+export async function saveDocument(_: {
   id: string;
   title: string;
-  kind: ArtifactKind;
+  kind: any;
   content: string;
   userId: string;
 }) {
-  try {
-    return await db
-      .insert(document)
-      .values({
-        id,
-        title,
-        kind,
-        content,
-        userId,
-        createdAt: new Date(),
-      })
-      .returning();
-  } catch (error) {
-    throw new ChatSDKError('bad_request:database', 'Failed to save document');
-  }
+  console.warn('saveDocument noop - document feature removed');
+  return null;
 }
 
-export async function getDocumentsById({ id }: { id: string }) {
-  try {
-    const documents = await db
-      .select()
-      .from(document)
-      .where(eq(document.id, id))
-      .orderBy(asc(document.createdAt));
-
-    return documents;
-  } catch (error) {
-    throw new ChatSDKError(
-      'bad_request:database',
-      'Failed to get documents by id',
-    );
-  }
+export async function getDocumentsById(_: { id: string }) {
+  return [] as any[];
 }
 
-export async function getDocumentById({ id }: { id: string }) {
-  try {
-    const [selectedDocument] = await db
-      .select()
-      .from(document)
-      .where(eq(document.id, id))
-      .orderBy(desc(document.createdAt));
-
-    return selectedDocument;
-  } catch (error) {
-    throw new ChatSDKError(
-      'bad_request:database',
-      'Failed to get document by id',
-    );
-  }
+export async function getDocumentById(_: { id: string }) {
+  return null;
 }
 
-export async function deleteDocumentsByIdAfterTimestamp({
-  id,
-  timestamp,
-}: {
+export async function deleteDocumentsByIdAfterTimestamp(_: {
   id: string;
   timestamp: Date;
 }) {
-  try {
-    await db
-      .delete(suggestion)
-      .where(
-        and(
-          eq(suggestion.documentId, id),
-          gt(suggestion.documentCreatedAt, timestamp),
-        ),
-      );
-
-    return await db
-      .delete(document)
-      .where(and(eq(document.id, id), gt(document.createdAt, timestamp)))
-      .returning();
-  } catch (error) {
-    throw new ChatSDKError(
-      'bad_request:database',
-      'Failed to delete documents by id after timestamp',
-    );
-  }
+  return [] as any[];
 }
 
+// Suggestions feature removed; keep stub for type safety
 export async function saveSuggestions({
   suggestions,
-}: {
-  suggestions: Array<Suggestion>;
-}) {
-  try {
-    return await db.insert(suggestion).values(suggestions);
-  } catch (error) {
-    throw new ChatSDKError(
-      'bad_request:database',
-      'Failed to save suggestions',
-    );
-  }
+}: { suggestions: Array<any> }) {
+  console.warn('saveSuggestions noop - suggestions feature removed');
+  return [];
 }
 
 export async function getSuggestionsByDocumentId({
   documentId,
-}: {
-  documentId: string;
-}) {
-  try {
-    return await db
-      .select()
-      .from(suggestion)
-      .where(and(eq(suggestion.documentId, documentId)));
-  } catch (error) {
-    throw new ChatSDKError(
-      'bad_request:database',
-      'Failed to get suggestions by document id',
-    );
-  }
+}: { documentId: string }) {
+  return [] as any[];
 }
 
 export async function getMessageById({ id }: { id: string }) {
@@ -432,12 +425,6 @@ export async function deleteMessagesByChatIdAfterTimestamp({
     const messageIds = messagesToDelete.map((message) => message.id);
 
     if (messageIds.length > 0) {
-      await db
-        .delete(vote)
-        .where(
-          and(eq(vote.chatId, chatId), inArray(vote.messageId, messageIds)),
-        );
-
       return await db
         .delete(message)
         .where(

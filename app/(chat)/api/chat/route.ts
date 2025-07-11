@@ -1,227 +1,356 @@
-import {
-  convertToModelMessages,
-  createUIMessageStream,
-  JsonToSseTransformStream,
-  smoothStream,
-  stepCountIs,
-  streamText,
-} from 'ai';
-import { auth, type UserType } from '@/app/(auth)/auth';
+import { auth } from '@/app/(auth)/auth';
 import { type RequestHints, systemPrompt } from '@/lib/ai/prompts';
 import {
-  createStreamId,
   deleteChatById,
   getChatById,
   getMessageCountByUserId,
-  getMessagesByChatId,
   saveChat,
   saveMessages,
 } from '@/lib/db/queries';
-import { convertToUIMessages, generateUUID } from '@/lib/utils';
+import { generateUUID } from '@/lib/utils';
 import { generateTitleFromUserMessage } from '../../actions';
-import { createDocument } from '@/lib/ai/tools/create-document';
-import { updateDocument } from '@/lib/ai/tools/update-document';
-import { requestSuggestions } from '@/lib/ai/tools/request-suggestions';
-import { getWeather } from '@/lib/ai/tools/get-weather';
-import { isProductionEnvironment } from '@/lib/constants';
-import { myProvider } from '@/lib/ai/providers';
 import { entitlementsByUserType } from '@/lib/ai/entitlements';
 import { postRequestBodySchema, type PostRequestBody } from './schema';
 import { geolocation } from '@vercel/functions';
-import {
-  createResumableStreamContext,
-  type ResumableStreamContext,
-} from 'resumable-stream';
-import { after } from 'next/server';
 import { ChatSDKError } from '@/lib/errors';
-import type { ChatMessage } from '@/lib/types';
-import type { ChatModel } from '@/lib/ai/models';
-import type { VisibilityType } from '@/components/visibility-selector';
+import { message } from '@/lib/db/schema';
+import { db } from '@/lib/db';
 
 export const maxDuration = 60;
 
-let globalStreamContext: ResumableStreamContext | null = null;
-
+// Modified to handle the case when Redis is not available
 export function getStreamContext() {
-  if (!globalStreamContext) {
-    try {
-      globalStreamContext = createResumableStreamContext({
-        waitUntil: after,
-      });
-    } catch (error: any) {
-      if (error.message.includes('REDIS_URL')) {
-        console.log(
-          ' > Resumable streams are disabled due to missing REDIS_URL',
-        );
-      } else {
-        console.error(error);
-      }
-    }
-  }
+  // We're intentionally not using Redis for resumable streams
+  // This function will always return null, which means we'll use
+  // the non-resumable stream path
+  return null;
+}
 
-  return globalStreamContext;
+// Helper function to save a message to the database
+async function saveMessageToDatabase(messageData: {
+  id: string;
+  chatId: string;
+  content: string;
+  role: 'user' | 'assistant';
+  createdAt: Date;
+}) {
+  try {
+    await db.insert(message).values({
+      id: messageData.id,
+      chatId: messageData.chatId,
+      parts: JSON.stringify({ text: messageData.content }),
+      role: messageData.role,
+      attachments: JSON.stringify([]),
+      createdAt: messageData.createdAt,
+    });
+    console.log(`Message saved to database: ${messageData.id}`);
+  } catch (error) {
+    console.error('Error saving message to database:', error);
+  }
 }
 
 export async function POST(request: Request) {
   let requestBody: PostRequestBody;
-
   try {
     const json = await request.json();
     requestBody = postRequestBodySchema.parse(json);
-  } catch (_) {
-    return new ChatSDKError('bad_request:api').toResponse();
+  } catch (err) {
+    console.error('Error parsing request body:', err);
+    return new ChatSDKError('bad_request:api', 'Invalid request body.').toResponse();
   }
 
   try {
     const {
-      id,
-      message,
+      id: chatId,
+      message: userMessage,
       selectedChatModel,
-      selectedVisibilityType,
-    }: {
-      id: string;
-      message: ChatMessage;
-      selectedChatModel: ChatModel['id'];
-      selectedVisibilityType: VisibilityType;
     } = requestBody;
 
     const session = await auth();
-
-    if (!session?.user) {
+    if (!session?.user?.id) {
       return new ChatSDKError('unauthorized:chat').toResponse();
     }
 
-    const userType: UserType = session.user.type;
+    const { id: userId, type: userType } = session.user;
 
     const messageCount = await getMessageCountByUserId({
-      id: session.user.id,
+      id: userId,
       differenceInHours: 24,
     });
 
-    if (messageCount > entitlementsByUserType[userType].maxMessagesPerDay) {
+    if (messageCount >= entitlementsByUserType[userType].maxMessagesPerDay) {
       return new ChatSDKError('rate_limit:chat').toResponse();
     }
 
-    const chat = await getChatById({ id });
+    const userContent = userMessage.parts
+      .filter(part => typeof part === 'string' || part.type === 'text')
+      .map(part => (typeof part === 'string' ? part : part.text || ''))
+      .join(' ');
 
-    if (!chat) {
-      const title = await generateTitleFromUserMessage({
-        message,
-      });
-
-      await saveChat({
-        id,
-        userId: session.user.id,
-        title,
-        visibility: selectedVisibilityType,
-      });
-    } else {
-      if (chat.userId !== session.user.id) {
-        return new ChatSDKError('forbidden:chat').toResponse();
-      }
+    if (!userContent) {
+      return new ChatSDKError('bad_request:chat', 'Cannot process an empty message.').toResponse();
     }
 
-    const messagesFromDb = await getMessagesByChatId({ id });
-    const uiMessages = [...convertToUIMessages(messagesFromDb), message];
+    const chat = await getChatById({ id: chatId });
+    if (chat && chat.userId !== userId) {
+      return new ChatSDKError('forbidden:chat').toResponse();
+    }
 
-    const { longitude, latitude, city, country } = geolocation(request);
+    if (!chat) {
+      const title = await generateTitleFromUserMessage({ message: userMessage });
+      await saveChat({
+        id: chatId,
+        userId,
+        title,
+        visibility: 'private',
+      });
+    }
 
-    const requestHints: RequestHints = {
-      longitude,
-      latitude,
-      city,
-      country,
-    };
-
+    // Save the user's message to the database
     await saveMessages({
       messages: [
         {
-          chatId: id,
-          id: message.id,
+          id: userMessage.id,
+          chatId,
           role: 'user',
-          parts: message.parts,
+          parts: userMessage.parts,
           attachments: [],
           createdAt: new Date(),
         },
       ],
     });
 
-    const streamId = generateUUID();
-    await createStreamId({ streamId, chatId: id });
-
-    const stream = createUIMessageStream({
-      execute: ({ writer: dataStream }) => {
-        const result = streamText({
-          model: myProvider.languageModel(selectedChatModel),
-          system: systemPrompt({ selectedChatModel, requestHints }),
-          messages: convertToModelMessages(uiMessages),
-          stopWhen: stepCountIs(5),
-          experimental_activeTools:
-            selectedChatModel === 'chat-model-reasoning'
-              ? []
-              : [
-                  'getWeather',
-                  'createDocument',
-                  'updateDocument',
-                  'requestSuggestions',
-                ],
-          experimental_transform: smoothStream({ chunking: 'word' }),
-          tools: {
-            getWeather,
-            createDocument: createDocument({ session, dataStream }),
-            updateDocument: updateDocument({ session, dataStream }),
-            requestSuggestions: requestSuggestions({
-              session,
-              dataStream,
-            }),
-          },
-          experimental_telemetry: {
-            isEnabled: isProductionEnvironment,
-            functionId: 'stream-text',
-          },
-        });
-
-        result.consumeStream();
-
-        dataStream.merge(
-          result.toUIMessageStream({
-            sendReasoning: true,
-          }),
-        );
-      },
-      generateId: generateUUID,
-      onFinish: async ({ messages }) => {
-        await saveMessages({
-          messages: messages.map((message) => ({
-            id: message.id,
-            role: message.role,
-            parts: message.parts,
-            createdAt: new Date(),
-            attachments: [],
-            chatId: id,
-          })),
-        });
-      },
-      onError: () => {
-        return 'Oops, an error occurred!';
-      },
+    const { extractDateAndFetchEvents } = await import('@/lib/calendar/extract-date');
+    console.log('Extracting date and fetching events for user message:', userContent);
+    const dateResult = await extractDateAndFetchEvents(userContent).catch((error) => {
+      console.error('Error extracting date or fetching events:', error);
+      return null;
     });
-
-    const streamContext = getStreamContext();
-
-    if (streamContext) {
-      return new Response(
-        await streamContext.resumableStream(streamId, () =>
-          stream.pipeThrough(new JsonToSseTransformStream()),
-        ),
-      );
+    
+    // Log detailed information about the extraction results
+    if (dateResult) {
+      console.log('=== CALENDAR EXTRACTION RESULTS ===');
+      console.log(`Date extracted: ${dateResult.formattedDate}`);
+      console.log(`Extraction confidence: ${dateResult.confidence}`);
+      // Log the date object itself for debugging timezone issues
+      console.log(`Date object:`, dateResult.date);
+      
+      if (dateResult.events && dateResult.events.length > 0) {
+        console.log(`Found ${dateResult.events.length} calendar events:`);
+        dateResult.events.forEach((event, index) => {
+          console.log(`\nEvent #${index + 1}:`);
+          console.log(`  Summary: ${event.summary || 'No summary'}`);
+          console.log(`  Start: ${event.start || 'No start time'}`);
+          console.log(`  End: ${event.end || 'No end time'}`);
+          console.log(`  Location: ${event.location || 'No location'}`);
+          
+          // Safely log description with truncation if it exists
+          if (event.description) {
+            const truncatedDesc = event.description.length > 50 
+              ? `${event.description.substring(0, 50)}...` 
+              : event.description;
+            console.log(`  Description: ${truncatedDesc}`);
+          } else {
+            console.log(`  Description: No description`);
+          }
+          
+          // Safely log attendees if they exist
+          if (event.attendees && Array.isArray(event.attendees)) {
+            console.log(`  Attendees: ${event.attendees.length}`);
+            if (event.attendees.length > 0) {
+              const firstAttendee = event.attendees[0];
+              const attendeeName = firstAttendee.displayName || firstAttendee.email || 'unnamed';
+              console.log(`  Attendee sample: ${attendeeName}${event.attendees.length > 1 ? ' (and others)' : ''}`);
+            }
+          } else {
+            console.log(`  Attendees: None or unknown`);
+          }
+        });
+      } else {
+        console.log('No calendar events found for the extracted date.');
+      }
+      console.log('=== END CALENDAR EXTRACTION ===');
     } else {
-      return new Response(stream.pipeThrough(new JsonToSseTransformStream()));
+      console.log('Failed to extract date or confidence was too low.');
     }
+
+    // Handle cases where we couldn't extract a date or find events
+    if (!dateResult || dateResult.confidence !== 'high') {
+      const fallbackId = generateUUID();
+      const fallbackMessage = {
+        id: fallbackId,
+        chatId,
+        role: 'assistant',
+        parts: [{ type: 'text', text: 'I was not confident about the date you requested. Could you please specify the date more clearly?' }],
+        attachments: [],
+        createdAt: new Date(),
+      };
+      
+      // Save the fallback message to the database
+      await saveMessages({ messages: [fallbackMessage] });
+      
+      // Return the fallback message directly
+      return new Response(JSON.stringify(fallbackMessage), { 
+        headers: { 'Content-Type': 'application/json' } 
+      });
+    }
+
+    if (!dateResult.events || dateResult.events.length === 0) {
+      const fallbackId = generateUUID();
+      const fallbackMessage = {
+        id: fallbackId,
+        chatId,
+        role: 'assistant',
+        parts: [{ type: 'text', text: `No calendar events found for ${dateResult.formattedDate}.` }],
+        attachments: [],
+        createdAt: new Date(),
+      };
+      
+      // Save the fallback message to the database
+      await saveMessages({ messages: [fallbackMessage] });
+      
+      // Return the fallback message directly
+      return new Response(JSON.stringify(fallbackMessage), { 
+        headers: { 'Content-Type': 'application/json' } 
+      });
+    }
+
+    // Format the extracted calendar events into a detailed schedule
+    const formatEvent = (ev: any, idx: number) => {
+      const start = typeof ev.start === 'string' ? ev.start : (ev.start?.dateTime || ev.start?.date || 'No start time');
+      const end = typeof ev.end === 'string' ? ev.end : (ev.end?.dateTime || ev.end?.date || 'No end time');
+      const attendees = ev.attendees && Array.isArray(ev.attendees)
+        ? ev.attendees.map((a: any) => a.displayName || a.email).filter(Boolean).join(', ')
+        : 'None';
+      return `Event #${idx + 1}:
+  Summary: ${ev.summary || 'No summary'}
+  Start: ${start}
+  End: ${end}
+  Location: ${ev.location || 'No location'}
+  Description: ${ev.description ? (ev.description.length > 200 ? ev.description.substring(0, 200) + '...' : ev.description) : 'No description'}
+  Attendees: ${attendees}`;
+    };
+    const detailedSchedule = dateResult.events.map(formatEvent).join('\n\n');
+    const { longitude, latitude, city, country } = geolocation(request);
+    const requestHints: RequestHints = { longitude, latitude, city, country };
+
+    // Compose a rich system prompt for OpenAI
+    const baseSystemPrompt = systemPrompt({ selectedChatModel, requestHints });
+    const fullPrompt = `You are a government executive assistant. Your task is to prepare a formal daily briefing for your principal based on the following schedule.\n\nFor each event, include:\n- A copy of the day’s schedule\n- A memo for each key item on the schedule.\nMemos can include logistics, background information, context about the participants, talking points, and more.\n\nDate: ${dateResult.formattedDate}\n\nSCHEDULE:\n${detailedSchedule}\n\nPlease format your response as a professional government briefing.`;
+
+    // Verify API key is available
+    const openaiApiKey = process.env.OPENAI_API_KEY;
+    if (!openaiApiKey) {
+      console.error('OpenAI API key is missing');
+      
+      const errorId = generateUUID();
+      const errorMessage = {
+        id: errorId,
+        chatId,
+        role: 'assistant',
+        parts: [{ type: 'text', text: 'The service is temporarily unavailable due to a configuration issue.' }],
+        attachments: [],
+        createdAt: new Date(),
+      };
+      
+      await saveMessages({ messages: [errorMessage] });
+      return new Response(JSON.stringify(errorMessage), { 
+        headers: { 'Content-Type': 'application/json' } 
+      });
+    }
+
+    try {
+      // Make the API request to OpenAI - NO STREAMING
+      const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${openaiApiKey}`,
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o',
+          messages: [
+            { role: 'system', content: fullPrompt },
+            { role: 'user', content: userContent },
+          ],
+          stream: false, // No streaming
+          temperature: 0.2,
+          max_tokens: 1500,
+        }),
+      });
+
+      if (!openaiRes.ok) {
+        const errorText = await openaiRes.text().catch(() => 'Unknown error');
+        console.error('OpenAI API request failed:', errorText);
+        
+        const errorId = generateUUID();
+        const errorMessage = {
+          id: errorId,
+          chatId,
+          role: 'assistant',
+          parts: [{ type: 'text', text: 'Sorry, I was unable to generate a response. Please try again.' }],
+          attachments: [],
+          createdAt: new Date(),
+        };
+        
+        await saveMessages({ messages: [errorMessage] });
+        return new Response(JSON.stringify(errorMessage), { 
+          headers: { 'Content-Type': 'application/json' } 
+        });
+      }
+
+      // Parse the complete response
+      const responseData = await openaiRes.json();
+      const assistantText = responseData.choices[0].message.content;
+      
+      // Generate a UUID for the assistant message
+      const assistantId = generateUUID();
+      
+      // Create the assistant message object
+      const assistantMessage = {
+        id: assistantId,
+        chatId,
+        role: 'assistant',
+        parts: [{ type: 'text', text: assistantText }],
+        attachments: [],
+        createdAt: new Date(),
+      };
+      
+      // Save the message to the database
+      await saveMessages({ messages: [assistantMessage] });
+      
+      // Return the complete message
+      return new Response(JSON.stringify(assistantMessage), { 
+        headers: { 'Content-Type': 'application/json' } 
+      });
+      
+    } catch (error) {
+      console.error('Error processing OpenAI response:', error);
+      
+      const errorId = generateUUID();
+      const errorMessage = {
+        id: errorId,
+        chatId,
+        role: 'assistant',
+        parts: [{ type: 'text', text: 'Sorry, an unexpected error occurred while processing your request. Please try again.' }],
+        attachments: [],
+        createdAt: new Date(),
+      };
+      
+      await saveMessages({ messages: [errorMessage] });
+      return new Response(JSON.stringify(errorMessage), { 
+        headers: { 'Content-Type': 'application/json' } 
+      });
+    }
+
+
   } catch (error) {
+    console.error('Unhandled error in POST /api/chat:', error);
     if (error instanceof ChatSDKError) {
       return error.toResponse();
     }
+    // Use a valid error code for generic server errors.
+    return new ChatSDKError('bad_request:api', 'An unexpected error occurred.').toResponse();
   }
 }
 

@@ -7,7 +7,7 @@ import {
   getMessageById,
   updateChatVisiblityById,
 } from '@/lib/db/queries';
-import type { VisibilityType } from '@/components/visibility-selector';
+
 import { myProvider } from '@/lib/ai/providers';
 
 export async function saveChatModelAsCookie(model: string) {
@@ -47,7 +47,7 @@ export async function updateChatVisibility({
   visibility,
 }: {
   chatId: string;
-  visibility: VisibilityType;
+  visibility: 'private';
 }) {
   await updateChatVisiblityById({ chatId, visibility });
 }

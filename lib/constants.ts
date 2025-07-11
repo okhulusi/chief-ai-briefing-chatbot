@@ -8,6 +8,7 @@ export const isTestEnvironment = Boolean(
     process.env.CI_PLAYWRIGHT,
 );
 
-export const guestRegex = /^guest-\d+$/;
+// Check if Redis is available
+export const isRedisAvailable = Boolean(process.env.REDIS_URL);
 
 export const DUMMY_PASSWORD = generateDummyPassword();

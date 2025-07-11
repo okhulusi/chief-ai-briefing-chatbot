@@ -20,8 +20,31 @@ export async function GET(
   const streamContext = getStreamContext();
   const resumeRequestedAt = new Date();
 
+  // If Redis is not available, we can't use resumable streams
   if (!streamContext) {
-    return new Response(null, { status: 204 });
+    // Instead of returning 204, let's try to get the most recent message
+    // and return it directly
+    const messages = await getMessagesByChatId({ id: chatId });
+    const mostRecentMessage = messages.at(-1);
+
+    if (!mostRecentMessage) {
+      return new Response(null, { status: 204 });
+    }
+
+    const restoredStream = createUIMessageStream<ChatMessage>({
+      execute: ({ writer }) => {
+        writer.write({
+          type: 'data-appendMessage',
+          data: JSON.stringify(mostRecentMessage),
+          transient: true,
+        });
+      },
+    });
+
+    return new Response(
+      restoredStream.pipeThrough(new JsonToSseTransformStream()),
+      { status: 200 },
+    );
   }
 
   if (!chatId) {
@@ -62,51 +85,50 @@ export async function GET(
     return new ChatSDKError('not_found:stream').toResponse();
   }
 
+  // Since we're not using resumable streams (Redis), we'll get the most recent message
+  // and return it directly
   const emptyDataStream = createUIMessageStream<ChatMessage>({
     execute: () => {},
   });
 
-  const stream = await streamContext.resumableStream(recentStreamId, () =>
-    emptyDataStream.pipeThrough(new JsonToSseTransformStream()),
-  );
+  const messages = await getMessagesByChatId({ id: chatId });
+  const mostRecentMessage = messages.at(-1);
 
-  /*
-   * For when the generation is streaming during SSR
-   * but the resumable stream has concluded at this point.
-   */
-  if (!stream) {
-    const messages = await getMessagesByChatId({ id: chatId });
-    const mostRecentMessage = messages.at(-1);
-
-    if (!mostRecentMessage) {
-      return new Response(emptyDataStream, { status: 200 });
-    }
-
-    if (mostRecentMessage.role !== 'assistant') {
-      return new Response(emptyDataStream, { status: 200 });
-    }
-
-    const messageCreatedAt = new Date(mostRecentMessage.createdAt);
-
-    if (differenceInSeconds(resumeRequestedAt, messageCreatedAt) > 15) {
-      return new Response(emptyDataStream, { status: 200 });
-    }
-
-    const restoredStream = createUIMessageStream<ChatMessage>({
-      execute: ({ writer }) => {
-        writer.write({
-          type: 'data-appendMessage',
-          data: JSON.stringify(mostRecentMessage),
-          transient: true,
-        });
-      },
-    });
-
+  if (!mostRecentMessage) {
     return new Response(
-      restoredStream.pipeThrough(new JsonToSseTransformStream()),
+      emptyDataStream.pipeThrough(new JsonToSseTransformStream()),
       { status: 200 },
     );
   }
 
-  return new Response(stream, { status: 200 });
+  if (mostRecentMessage.role !== 'assistant') {
+    return new Response(
+      emptyDataStream.pipeThrough(new JsonToSseTransformStream()),
+      { status: 200 },
+    );
+  }
+
+  const messageCreatedAt = new Date(mostRecentMessage.createdAt);
+
+  if (differenceInSeconds(resumeRequestedAt, messageCreatedAt) > 15) {
+    return new Response(
+      emptyDataStream.pipeThrough(new JsonToSseTransformStream()),
+      { status: 200 },
+    );
+  }
+
+  const restoredStream = createUIMessageStream<ChatMessage>({
+    execute: ({ writer }) => {
+      writer.write({
+        type: 'data-appendMessage',
+        data: JSON.stringify(mostRecentMessage),
+        transient: true,
+      });
+    },
+  });
+
+  return new Response(
+    restoredStream.pipeThrough(new JsonToSseTransformStream()),
+    { status: 200 },
+  );
 }

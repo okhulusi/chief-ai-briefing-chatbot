@@ -3,7 +3,7 @@ import {
   extractReasoningMiddleware,
   wrapLanguageModel,
 } from 'ai';
-import { xai } from '@ai-sdk/xai';
+import { openai } from '@ai-sdk/openai';
 import {
   artifactModel,
   chatModel,
@@ -23,15 +23,35 @@ export const myProvider = isTestEnvironment
     })
   : customProvider({
       languageModels: {
-        'chat-model': xai('grok-2-vision-1212'),
+        'chat-model': {
+  ...(openai('gpt-4o') as any),
+  supportedUrls: [/^https:\/\/api\.openai\.com\/v1\/chat\/completions$/],
+  specificationVersion: 'v2',
+},
         'chat-model-reasoning': wrapLanguageModel({
-          model: xai('grok-3-mini-beta'),
-          middleware: extractReasoningMiddleware({ tagName: 'think' }),
-        }),
-        'title-model': xai('grok-2-1212'),
-        'artifact-model': xai('grok-2-1212'),
+  model: {
+    ...(openai('gpt-4o') as any),
+    supportedUrls: [/^https:\/\/api\.openai\.com\/v1\/chat\/completions$/],
+    specificationVersion: 'v2',
+  },
+  middleware: extractReasoningMiddleware({ tagName: 'think' }),
+}),
+        'title-model': {
+  ...(openai('gpt-4o') as any),
+  supportedUrls: [/^https:\/\/api\.openai\.com\/v1\/chat\/completions$/],
+  specificationVersion: 'v2',
+},
+        'artifact-model': {
+  ...(openai('gpt-4o') as any),
+  supportedUrls: [/^https:\/\/api\.openai\.com\/v1\/chat\/completions$/],
+  specificationVersion: 'v2',
+},
       },
       imageModels: {
-        'small-model': xai.imageModel('grok-2-image'),
+        // OpenAI image generation (DALL·E)
+        'small-model': {
+  ...(openai.imageModel('dall-e-3') as any),
+  specificationVersion: 'v2',
+},
       },
     });

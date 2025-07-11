@@ -1,137 +1,49 @@
 import type { Node } from 'prosemirror-model';
 import { Plugin, PluginKey } from 'prosemirror-state';
 import {
-  type Decoration,
   DecorationSet,
   type EditorView,
 } from 'prosemirror-view';
-import { createRoot } from 'react-dom/client';
 
-import { Suggestion as PreviewSuggestion } from '@/components/suggestion';
 import type { Suggestion } from '@/lib/db/schema';
-import { ArtifactKind } from '@/components/artifact';
+import type { ArtifactKind } from '@/components/artifact';
 
+// This is a stub implementation since the suggestions feature has been removed
+// It maintains the same interface but doesn't actually do anything
+
+// Extended interface for UI suggestions
 export interface UISuggestion extends Suggestion {
   selectionStart: number;
   selectionEnd: number;
 }
 
-interface Position {
-  start: number;
-  end: number;
-}
-
-function findPositionsInDoc(doc: Node, searchText: string): Position | null {
-  let positions: { start: number; end: number } | null = null;
-
-  doc.nodesBetween(0, doc.content.size, (node, pos) => {
-    if (node.isText && node.text) {
-      const index = node.text.indexOf(searchText);
-
-      if (index !== -1) {
-        positions = {
-          start: pos + index,
-          end: pos + index + searchText.length,
-        };
-
-        return false;
-      }
-    }
-
-    return true;
-  });
-
-  return positions;
-}
-
+// Stub implementation that returns empty arrays
 export function projectWithPositions(
   doc: Node,
   suggestions: Array<Suggestion>,
 ): Array<UISuggestion> {
-  return suggestions.map((suggestion) => {
-    const positions = findPositionsInDoc(doc, suggestion.originalText);
-
-    if (!positions) {
-      return {
-        ...suggestion,
-        selectionStart: 0,
-        selectionEnd: 0,
-      };
-    }
-
-    return {
-      ...suggestion,
-      selectionStart: positions.start,
-      selectionEnd: positions.end,
-    };
-  });
+  // Return empty array since suggestions feature is removed
+  return [];
 }
 
+// Stub implementation of createSuggestionWidget
 export function createSuggestionWidget(
-  suggestion: UISuggestion,
   view: EditorView,
-  artifactKind: ArtifactKind = 'text',
-): { dom: HTMLElement; destroy: () => void } {
-  const dom = document.createElement('span');
-  const root = createRoot(dom);
-
-  dom.addEventListener('mousedown', (event) => {
-    event.preventDefault();
-    view.dom.blur();
-  });
-
-  const onApply = () => {
-    const { state, dispatch } = view;
-
-    const decorationTransaction = state.tr;
-    const currentState = suggestionsPluginKey.getState(state);
-    const currentDecorations = currentState?.decorations;
-
-    if (currentDecorations) {
-      const newDecorations = DecorationSet.create(
-        state.doc,
-        currentDecorations.find().filter((decoration: Decoration) => {
-          return decoration.spec.suggestionId !== suggestion.id;
-        }),
-      );
-
-      decorationTransaction.setMeta(suggestionsPluginKey, {
-        decorations: newDecorations,
-        selected: null,
-      });
-      dispatch(decorationTransaction);
-    }
-
-    const textTransaction = view.state.tr.replaceWith(
-      suggestion.selectionStart,
-      suggestion.selectionEnd,
-      state.schema.text(suggestion.suggestedText),
-    );
-
-    textTransaction.setMeta('no-debounce', true);
-
-    dispatch(textTransaction);
-  };
-
-  root.render(
-    <PreviewSuggestion
-      suggestion={suggestion}
-      onApply={onApply}
-      artifactKind={artifactKind}
-    />,
-  );
-
+  suggestion: UISuggestion,
+  artifactKind: ArtifactKind,
+) {
+  // Create a minimal implementation that does nothing
+  const dom = document.createElement('div');
+  
   return {
     dom,
     destroy: () => {
-      // Wrapping unmount in setTimeout to avoid synchronous unmounting during render
-      setTimeout(() => {
-        root.unmount();
-      }, 0);
+      // No-op
     },
   };
 }
 
+// Stub implementation of the suggestions plugin
 export const suggestionsPluginKey = new PluginKey('suggestions');
 export const suggestionsPlugin = new Plugin({
   key: suggestionsPluginKey,
