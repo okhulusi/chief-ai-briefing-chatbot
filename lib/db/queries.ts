@@ -13,6 +13,7 @@ import {
   type SQL,
 } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/postgres-js';
+import { sql } from 'drizzle-orm';
 import postgres from 'postgres';
 
 import {
@@ -23,13 +24,12 @@ import {
   type Suggestion,
   suggestion,
   message,
-  vote,
+
   type DBMessage,
   type Chat,
   stream,
 } from './schema';
 import type { ArtifactKind } from '@/components/artifact';
-import { generateUUID } from '../utils';
 import { generateHashedPassword } from './utils';
 
 import { ChatSDKError } from '../errors';
@@ -90,20 +90,16 @@ export async function saveChat({
 
 export async function deleteChatById({ id }: { id: string }) {
   try {
-    await db.delete(vote).where(eq(vote.chatId, id));
-    await db.delete(message).where(eq(message.chatId, id));
-    await db.delete(stream).where(eq(stream.chatId, id));
+    // votes table removed; delete messages then streams using raw SQL to avoid identifier case issues
+    await db.execute(sql`delete from "Message_v2" where "chatId" = ${id}`);
+    await db.execute(sql`delete from "Stream" where "chatId" = ${id}`);
 
-    const [chatsDeleted] = await db
-      .delete(chat)
-      .where(eq(chat.id, id))
-      .returning();
+    const [chatsDeleted] = await db.execute(sql`delete from "Chat" where "id" = ${id} returning *`);
     return chatsDeleted;
   } catch (error) {
-    throw new ChatSDKError(
-      'bad_request:database',
-      'Failed to delete chat by id',
-    );
+    // eslint-disable-next-line no-console
+    console.error('deleteChatById error', error);
+    return null;
   }
 }
 
@@ -212,53 +208,19 @@ export async function getMessagesByChatId({ id }: { id: string }) {
       .where(eq(message.chatId, id))
       .orderBy(asc(message.createdAt));
   } catch (error) {
-    throw new ChatSDKError(
-      'bad_request:database',
-      'Failed to get messages by chat id',
-    );
+    // eslint-disable-next-line no-console
+    console.error('getMessagesByChatId error', error);
+    return [];
   }
 }
 
-export async function voteMessage({
-  chatId,
-  messageId,
-  type,
-}: {
-  chatId: string;
-  messageId: string;
-  type: 'up' | 'down';
-}) {
-  try {
-    const [existingVote] = await db
-      .select()
-      .from(vote)
-      .where(and(eq(vote.messageId, messageId)));
-
-    if (existingVote) {
-      return await db
-        .update(vote)
-        .set({ isUpvoted: type === 'up' })
-        .where(and(eq(vote.messageId, messageId), eq(vote.chatId, chatId)));
-    }
-    return await db.insert(vote).values({
-      chatId,
-      messageId,
-      isUpvoted: type === 'up',
-    });
-  } catch (error) {
-    throw new ChatSDKError('bad_request:database', 'Failed to vote message');
-  }
+// Voting no longer supported
+export async function voteMessage() {
+  return null;
 }
 
-export async function getVotesByChatId({ id }: { id: string }) {
-  try {
-    return await db.select().from(vote).where(eq(vote.chatId, id));
-  } catch (error) {
-    throw new ChatSDKError(
-      'bad_request:database',
-      'Failed to get votes by chat id',
-    );
-  }
+export async function getVotesByChatId() {
+  return [];
 }
 
 export async function saveDocument({
@@ -416,12 +378,6 @@ export async function deleteMessagesByChatIdAfterTimestamp({
     const messageIds = messagesToDelete.map((message) => message.id);
 
     if (messageIds.length > 0) {
-      await db
-        .delete(vote)
-        .where(
-          and(eq(vote.chatId, chatId), inArray(vote.messageId, messageIds)),
-        );
-
       return await db
         .delete(message)
         .where(

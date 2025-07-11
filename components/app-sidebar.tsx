@@ -15,7 +15,6 @@ import {
   SidebarMenu,
   useSidebar,
 } from '@/components/ui/sidebar';
-import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from './ui/dropdown-menu';
 
 export function AppSidebar({ user }: { user: User | undefined }) {
@@ -33,28 +32,30 @@ export function AppSidebar({ user }: { user: User | undefined }) {
               </span>
             </div>
             <DropdownMenu>
-              <Tooltip>
-                <DropdownMenuTrigger asChild>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      type="button"
-                      className="p-2 h-fit cursor-pointer"
-                    >
-                      <PlusIcon />
-                      <span className="sr-only">Generate new Briefing</span>
-                    </Button>
-                  </TooltipTrigger>
-                </DropdownMenuTrigger>
-                <TooltipContent align="end">Generate new Briefing</TooltipContent>
-              </Tooltip>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  type="button"
+                  className="p-2 h-fit cursor-pointer"
+                >
+                  <PlusIcon />
+                  <span className="sr-only">Generate new Briefing</span>
+                </Button>
+              </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuItem
                   className="cursor-pointer"
-                  onSelect={() => {
-                    setOpenMobile(false);
-                    router.push('/');
-                    router.refresh();
+                  onSelect={async () => {
+                    try {
+                      const res = await fetch('/api/briefing', { method: 'POST' });
+                      const { id } = await res.json();
+                      setOpenMobile(false);
+                      router.push(`/chat/${id}`);
+                      router.refresh();
+                    } catch (_) {
+                      // eslint-disable-next-line no-console
+                      console.error('Failed to create briefing');
+                    }
                   }}
                 >
                   Generate new Briefing
