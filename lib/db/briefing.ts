@@ -8,13 +8,30 @@ export async function createBriefingChat(userId: string) {
   const id = generateUUID();
 
   try {
-    // Count existing briefing chats for user to determine next number
-    const existing = await db
-      .select({ count: chat.id })
+    // Get all existing briefing titles for this user
+    const existingBriefings = await db
+      .select({ title: chat.title })
       .from(chat)
       .where(and(eq(chat.userId, userId), like(chat.title, 'Briefing%')));
-
-    const nextNumber = (existing[0]?.count ?? 0) + 1;
+    
+    // Extract numbers from existing briefing titles
+    const usedNumbers = existingBriefings
+      .map(b => {
+        const match = b.title.match(/Briefing (\d+)/);
+        return match ? Number.parseInt(match[1], 10) : null;
+      })
+      .filter((num): num is number => num !== null && !Number.isNaN(num))
+      .sort((a, b) => a - b);
+    
+    // Find the first available number (filling gaps)
+    let nextNumber = 1;
+    for (const num of usedNumbers) {
+      if (num > nextNumber) {
+        break; // Found a gap
+      }
+      nextNumber = num + 1;
+    }
+    
     const title = `Briefing ${nextNumber}`;
 
     // Create the chat row first
