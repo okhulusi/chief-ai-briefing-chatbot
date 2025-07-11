@@ -11,18 +11,27 @@ export const Greeting = () => {
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: 10 }}
         transition={{ delay: 0.5 }}
-        className="text-2xl font-semibold"
+        className="text-2xl font-semibold text-center"
       >
-        Hello there!
+        Welcome!
       </motion.div>
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: 10 }}
         transition={{ delay: 0.6 }}
-        className="text-2xl text-zinc-500"
+        className="text-xl text-zinc-500 text-center mt-4"
       >
-        How can I help you today?
+        Select a briefing or generate a new one to get started.
+      </motion.div>
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: 10 }}
+        transition={{ delay: 0.7 }}
+        className="text-zinc-400 text-center mt-8"
+      >
+        <span className="text-lg">👈</span> Use the sidebar to manage your briefings
       </motion.div>
     </div>
   );
