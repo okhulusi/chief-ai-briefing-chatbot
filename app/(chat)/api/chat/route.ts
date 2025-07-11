@@ -215,14 +215,28 @@ export async function POST(request: Request) {
       });
     }
 
-    // Prepare the system prompt with calendar events
-    const eventList = dateResult.events.map(ev => `- ${ev.summary}${ev.start ? ` (${ev.start})` : ''}${ev.location ? ` @ ${ev.location}` : ''}`).join('\n');
+    // Format the extracted calendar events into a detailed schedule
+    const formatEvent = (ev: any, idx: number) => {
+      const start = typeof ev.start === 'string' ? ev.start : (ev.start?.dateTime || ev.start?.date || 'No start time');
+      const end = typeof ev.end === 'string' ? ev.end : (ev.end?.dateTime || ev.end?.date || 'No end time');
+      const attendees = ev.attendees && Array.isArray(ev.attendees)
+        ? ev.attendees.map((a: any) => a.displayName || a.email).filter(Boolean).join(', ')
+        : 'None';
+      return `Event #${idx + 1}:
+  Summary: ${ev.summary || 'No summary'}
+  Start: ${start}
+  End: ${end}
+  Location: ${ev.location || 'No location'}
+  Description: ${ev.description ? (ev.description.length > 200 ? ev.description.substring(0, 200) + '...' : ev.description) : 'No description'}
+  Attendees: ${attendees}`;
+    };
+    const detailedSchedule = dateResult.events.map(formatEvent).join('\n\n');
     const { longitude, latitude, city, country } = geolocation(request);
     const requestHints: RequestHints = { longitude, latitude, city, country };
-    
+
+    // Compose a rich system prompt for OpenAI
     const baseSystemPrompt = systemPrompt({ selectedChatModel, requestHints });
-    const briefingText = `I've found the following events for ${dateResult.formattedDate} in your calendar. Please begin your response by acknowledging that you found these events, then provide a formal, detailed briefing for your principal.\n\nEvents:\n${eventList}\n\nYour response should be structured as a professional briefing, with a clear introduction acknowledging the date, a summary of the day's schedule, and details about each event including timing, location, and any other relevant information.`;
-    const systemPromptText = `${baseSystemPrompt}\n\n${briefingText}`;
+    const fullPrompt = `You are a government executive assistant. Your task is to prepare a formal daily briefing for your principal based on the following schedule.\n\nFor each event, include:\n- A copy of the day’s schedule\n- A memo for each key item on the schedule.\nMemos can include logistics, background information, context about the participants, talking points, and more.\n\nDate: ${dateResult.formattedDate}\n\nSCHEDULE:\n${detailedSchedule}\n\nPlease format your response as a professional government briefing.`;
 
     // Verify API key is available
     const openaiApiKey = process.env.OPENAI_API_KEY;
@@ -249,14 +263,14 @@ export async function POST(request: Request) {
       // Make the API request to OpenAI - NO STREAMING
       const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json', 
-          'Authorization': `Bearer ${openaiApiKey}` 
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${openaiApiKey}`,
         },
         body: JSON.stringify({
           model: 'gpt-4o',
           messages: [
-            { role: 'system', content: systemPromptText },
+            { role: 'system', content: fullPrompt },
             { role: 'user', content: userContent },
           ],
           stream: false, // No streaming
