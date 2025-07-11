@@ -2,6 +2,8 @@
 
 import type { User } from 'next-auth';
 import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
+import { mutate } from 'swr';
 
 import { PlusIcon } from '@/components/icons';
 import { SidebarHistory } from '@/components/sidebar-history';
@@ -47,15 +49,28 @@ export function AppSidebar({ user }: { user: User | undefined }) {
                   className="cursor-pointer"
                   onSelect={async () => {
                     try {
+                      // Show a loading toast to indicate briefing creation is in progress
+                      toast.loading('Creating new briefing...');
+                      
                       const res = await fetch('/api/briefing', { method: 'POST' });
                       const data = await res.json();
                       const id = data.id;
+                      
                       if (id !== undefined) {
+                        // Dismiss the loading toast
+                        toast.dismiss();
+                        toast.success('Briefing created');
+                        
+                        // Manually trigger a revalidation of all SWR cache
+                        // This will refresh the sidebar history immediately
+                        await mutate('/api/chat/history');
+                        
                         setOpenMobile(false);
                         router.push(`/chat/${id}`);
-                        router.refresh();
                       }
                     } catch (_) {
+                      toast.dismiss();
+                      toast.error('Failed to create briefing');
                       // eslint-disable-next-line no-console
                       console.error('Failed to create briefing');
                     }
