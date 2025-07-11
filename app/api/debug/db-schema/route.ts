@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
     );
     
     return NextResponse.json({
-      schema: result.rows,
+      schema: result,
       message: 'This shows all columns in the User table to verify the Google OAuth fields exist'
     });
   } catch (error) {

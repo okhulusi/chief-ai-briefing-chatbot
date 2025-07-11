@@ -150,70 +150,196 @@ export async function POST(request: Request) {
           const lastMessage = uiMessages[uiMessages.length - 1];
           let userContent = '';
           
+          console.log('Raw message from client:', JSON.stringify(lastMessage));
+          
           // Extract content from the message based on its structure
-          // Use type assertion to handle the TypeScript error
-          const message = lastMessage as any;
-          if (typeof message.content === 'string') {
-            userContent = message.content;
-          } else if (message.content && Array.isArray(message.content)) {
-            // Handle array content format
-            userContent = message.content
-              .filter((part: any) => typeof part === 'string' || (part && part.type === 'text'))
-              .map((part: any) => typeof part === 'string' ? part : part.text || '')
-              .join(' ');
-          } else {
-            // Default to empty string if we can't extract content
+          if (typeof lastMessage === 'object' && lastMessage !== null) {
+            // Check if the message has parts array (from the client)
+            if ((lastMessage as any).parts && Array.isArray((lastMessage as any).parts)) {
+              userContent = (lastMessage as any).parts
+                .filter((part: any) => typeof part === 'string' || (part && part.type === 'text'))
+                .map((part: any) => typeof part === 'string' ? part : part.text || '')
+                .join(' ');
+            } 
+            // Check if the message has content as string
+            else if (typeof (lastMessage as any).content === 'string') {
+              userContent = (lastMessage as any).content;
+            } 
+            // Check if the message has content as array
+            else if ((lastMessage as any).content && Array.isArray((lastMessage as any).content)) {
+              userContent = (lastMessage as any).content
+                .filter((part: any) => typeof part === 'string' || (part && part.type === 'text'))
+                .map((part: any) => typeof part === 'string' ? part : part.text || '')
+                .join(' ');
+            }
+          }
+          
+          // If we couldn't extract content, check if the message itself is a string
+          if (!userContent && typeof lastMessage === 'string') {
+            userContent = lastMessage;
+          }
+          
+          // Default to empty string if we can't extract content
+          if (!userContent) {
             userContent = '';
+            console.error('Could not extract user content from message:', lastMessage);
           }
           
-          // Call the OpenAI API directly
-          const apiKey = process.env.OPENAI_API_KEY;
-          if (!apiKey) {
-            throw new Error('OpenAI API key is missing');
+          console.log('Extracted user content:', userContent);
+          
+          // Extract date from user message and fetch calendar events
+          const { extractDateAndFetchEvents } = await import('@/lib/calendar/extract-date');
+          console.log('Extracting date from user message:', userContent);
+          
+          try {
+            const { date: targetDate, formattedDate, events: calendarEvents } = 
+              await extractDateAndFetchEvents(userContent);
+            
+            console.log('Extracted date:', formattedDate);
+            console.log('Found calendar events:', calendarEvents?.length || 0);
+            
+            // Prepare calendar data for the prompt
+            let detailedCalendarData = "";
+            if (calendarEvents && calendarEvents.length > 0) {
+              detailedCalendarData = `# Calendar Events for ${formattedDate}\n\n`;
+              detailedCalendarData += `## Day Overview\n${calendarEvents.length} event(s) scheduled.\n\n`;
+              detailedCalendarData += `## Detailed Event Information\n\n`;
+              
+              calendarEvents.forEach((event, index) => {
+                const start = event.start?.dateTime || event.start?.date || '';
+                const end = event.end?.dateTime || event.end?.date || '';
+                const startTime = start ? new Date(start).toLocaleString() : 'Unknown time';
+                const endTime = end ? new Date(end).toLocaleString() : 'Unknown time';
+                
+                detailedCalendarData += `### Event ${index + 1}: ${event.summary || 'Untitled Event'}\n`;
+                detailedCalendarData += `- Time: ${startTime} to ${endTime}\n`;
+                if (event.location) detailedCalendarData += `- Location: ${event.location}\n`;
+                if (event.description) detailedCalendarData += `- Description: ${event.description}\n`;
+                
+                if (event.attendees && event.attendees.length > 0) {
+                  detailedCalendarData += `- Attendees:\n`;
+                  event.attendees.forEach(attendee => {
+                    const name = attendee.displayName || attendee.email || 'Unknown';
+                    const status = attendee.responseStatus ? ` (${attendee.responseStatus})` : '';
+                    detailedCalendarData += `  * ${name}${status}\n`;
+                  });
+                }
+                
+                if (event.organizer) {
+                  detailedCalendarData += `- Organizer: ${event.organizer.displayName || event.organizer.email || 'Unknown'}\n`;
+                }
+                
+                detailedCalendarData += '\n';
+              });
+            } else {
+              detailedCalendarData = `No events scheduled for ${formattedDate || 'the requested date'}.`;
+            }
+            
+            // Call the OpenAI API directly with streaming
+            const apiKey = process.env.OPENAI_API_KEY;
+            if (!apiKey) {
+              throw new Error('OpenAI API key is missing');
+            }
+            
+            // Prepare a more specific prompt for calendar-based briefing generation
+            const enhancedSystemPrompt = `${systemPromptText}
+
+You are a briefing assistant that creates detailed government-style briefing books based on calendar data.
+
+Government officials receive a daily briefing book that includes:
+1. A copy of the day's schedule in an easy-to-scan format
+2. Individual memos prepared for each key item on the schedule
+
+For each calendar event, create a detailed memo that includes:
+- Logistics (time, location, participants)
+- Background information on the topic
+- Context about the participants
+- Talking points and suggested questions
+- Any necessary preparation or follow-up actions
+
+If there are no events for the specified date, respond with: "There are no events scheduled for this day. Your calendar is clear."
+
+Format the briefing in a professional, government-style manner with clear headings and structured sections.`;
+            
+            console.log('Calling OpenAI API with streaming...');
+            
+            // Use streaming API
+            const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${apiKey}`
+              },
+              body: JSON.stringify({
+                model: 'gpt-4o',
+                messages: [
+                  { role: 'system', content: enhancedSystemPrompt },
+                  { role: 'system', content: detailedCalendarData },
+                  { role: 'user', content: userContent }
+                ],
+                temperature: 0.7,
+                max_tokens: 4000,
+                stream: true
+              })
+            });
+            
+            if (!openaiResponse.ok) {
+              const errorData = await openaiResponse.text();
+              console.error('OpenAI API error:', errorData);
+              throw new Error(`OpenAI API error: ${openaiResponse.status}`);
+            }
+            
+            // Process the streaming response
+            const reader = openaiResponse.body?.getReader();
+            const decoder = new TextDecoder('utf-8');
+            let responseText = '';
+            
+            if (!reader) {
+              console.error('Failed to get reader from response');
+              throw new Error('Failed to get reader from response');
+            }
+            
+            // Initial message
+            assistantMessage.content = '';
+            
+            // Stream the response
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              
+              const chunk = decoder.decode(value);
+              const lines = chunk.split('\n');
+              
+              for (const line of lines) {
+                if (line.startsWith('data: ') && line !== 'data: [DONE]') {
+                  try {
+                    const data = JSON.parse(line.substring(6));
+                    if (data.choices?.[0]?.delta?.content) {
+                      const content = data.choices[0].delta.content;
+                      responseText += content;
+                      
+                      // Update the message with the generated text so far
+                      assistantMessage.content = responseText;
+                      
+                      // Stream the update
+                      dataStream.write({
+                        type: 'data-message',
+                        data: JSON.stringify(assistantMessage),
+                      });
+                    }
+                  } catch (e) {
+                    console.error('Error parsing streaming response:', e);
+                  }
+                }
+              }
+            }
+            
+            // Final update with complete response
+            assistantMessage.content = responseText;
+          } catch (error) {
+            console.error('Error processing calendar data or OpenAI request:', error);
+            assistantMessage.content = 'Sorry, I encountered an error while processing your calendar data or generating the briefing.';
           }
-          
-          // Prepare a more specific prompt for calendar-based briefing generation
-          const enhancedSystemPrompt = `${systemPromptText}
-
-You are a briefing assistant that creates concise, informative briefings based on calendar data.
-
-If calendar data is provided, analyze the events for the specified date and create a well-structured briefing that includes:
-1. A summary of the day's schedule
-2. Key meetings and their times
-3. Any action items or preparations needed
-
-If there are no events for the specified date, respond with: "There are no events to generate a briefing from today."
-
-Format the briefing in a professional, easy-to-read manner.`;
-
-          const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${apiKey}`
-            },
-            body: JSON.stringify({
-              model: 'gpt-4o',
-              messages: [
-                { role: 'system', content: enhancedSystemPrompt },
-                { role: 'user', content: userContent }
-              ],
-              temperature: 0.7,
-              max_tokens: 2000
-            })
-          });
-          
-          if (!openaiResponse.ok) {
-            const errorData = await openaiResponse.text();
-            console.error('OpenAI API error:', errorData);
-            throw new Error(`OpenAI API error: ${openaiResponse.status}`);
-          }
-          
-          const data = await openaiResponse.json();
-          const responseText = data.choices[0].message.content;
-          
-          // Update the message with the generated text
-          assistantMessage.content = responseText;
           
           // Write the final message
           dataStream.write({

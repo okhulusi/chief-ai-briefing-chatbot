@@ -104,7 +104,7 @@ export function SidebarUserNav({ user }: { user: User }) {
                   
                   // Handle successful response
                   if (!json.events || json.events.length === 0) {
-                    toast({ type: 'success', description: 'No events found for today!' });
+                    toast({ type: 'success', description: 'Calendar already linked!' });
                   } else {
                     toast({
                       type: 'success',

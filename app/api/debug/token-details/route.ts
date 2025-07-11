@@ -1,7 +1,7 @@
 import { auth } from '@/app/(auth)/auth';
 import { db } from '@/lib/db';
 import { user } from '@/lib/db/schema';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { NextResponse } from 'next/server';
 
 // This endpoint provides detailed information about token storage
@@ -49,10 +49,9 @@ export async function GET() {
 
     // Get raw database values for debugging
     const rawDbQuery = await db.execute(
-      `SELECT "id", "email", "googleAccessToken", "googleRefreshToken", "googleTokenExpiry" 
-       FROM "User" 
-       WHERE "id" = $1`,
-      [session.user.id]
+      sql`SELECT "id", "email", "googleAccessToken", "googleRefreshToken", "googleTokenExpiry" 
+          FROM "User" 
+          WHERE "id" = ${session.user.id}`
     );
 
     return NextResponse.json({

@@ -59,7 +59,7 @@ export async function createBriefingChat(userId: string) {
       parts: [
         {
           type: 'text',
-          text: 'Welcome! What day do you want to generate a briefing from?',
+          text: "Welcome to your AI Briefing Assistant! I create detailed government-style briefing books based on your calendar events. Simply tell me which day you want a briefing for (e.g., 'today', 'tomorrow', 'July 15th'), and I'll generate a comprehensive briefing with memos for each event. After receiving your briefing, you can ask questions about specific events or request additional information.",
         },
       ],
       attachments: [],

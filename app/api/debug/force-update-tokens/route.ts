@@ -1,7 +1,7 @@
 import { auth } from '@/app/(auth)/auth';
 import { db } from '@/lib/db';
 import { user } from '@/lib/db/schema';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
@@ -33,13 +33,12 @@ export async function GET(request: NextRequest) {
     
     // Execute raw SQL to update the user
     const rawResult = await db.execute(
-      `UPDATE "User" 
-       SET "googleAccessToken" = $1, 
-           "googleRefreshToken" = $2, 
-           "googleTokenExpiry" = $3
-       WHERE "id" = $4
-       RETURNING "id", "email"`,
-      [testAccessToken, testRefreshToken, testExpiry, session.user.id]
+      sql`UPDATE "User" 
+          SET "googleAccessToken" = ${testAccessToken}, 
+              "googleRefreshToken" = ${testRefreshToken}, 
+              "googleTokenExpiry" = ${testExpiry}
+          WHERE "id" = ${session.user.id}
+          RETURNING "id", "email"`
     );
     
     console.log('Raw SQL update result:', rawResult);
