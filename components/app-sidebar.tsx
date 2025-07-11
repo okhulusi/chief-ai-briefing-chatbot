@@ -15,8 +15,8 @@ import {
   SidebarMenu,
   useSidebar,
 } from '@/components/ui/sidebar';
-import Link from 'next/link';
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from './ui/dropdown-menu';
 
 export function AppSidebar({ user }: { user: User | undefined }) {
   const router = useRouter();
@@ -27,34 +27,40 @@ export function AppSidebar({ user }: { user: User | undefined }) {
       <SidebarHeader>
         <SidebarMenu>
           <div className="flex flex-row justify-between items-center">
-            <Link
-              href="/"
-              onClick={() => {
-                setOpenMobile(false);
-              }}
-              className="flex flex-row gap-3 items-center"
-            >
-              <span className="text-lg font-semibold px-2 hover:bg-muted rounded-md cursor-pointer">
+            <div className="flex flex-row gap-3 items-center">
+              <span className="text-lg font-semibold px-2 rounded-md">
                 Chatbot
               </span>
-            </Link>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  type="button"
-                  className="p-2 h-fit"
-                  onClick={() => {
+            </div>
+            <DropdownMenu>
+              <Tooltip>
+                <DropdownMenuTrigger asChild>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      type="button"
+                      className="p-2 h-fit cursor-pointer"
+                    >
+                      <PlusIcon />
+                      <span className="sr-only">Generate new Briefing</span>
+                    </Button>
+                  </TooltipTrigger>
+                </DropdownMenuTrigger>
+                <TooltipContent align="end">Generate new Briefing</TooltipContent>
+              </Tooltip>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  className="cursor-pointer"
+                  onSelect={() => {
                     setOpenMobile(false);
                     router.push('/');
                     router.refresh();
                   }}
                 >
-                  <PlusIcon />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent align="end">New Chat</TooltipContent>
-            </Tooltip>
+                  Generate new Briefing
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </SidebarMenu>
       </SidebarHeader>
