@@ -8,7 +8,7 @@ export const isTestEnvironment = Boolean(
     process.env.CI_PLAYWRIGHT,
 );
 
-// Redis functionality has been removed
-
+// Check if Redis is available
+export const isRedisAvailable = Boolean(process.env.REDIS_URL);
 
 export const DUMMY_PASSWORD = generateDummyPassword();

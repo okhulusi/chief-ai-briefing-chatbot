@@ -8,39 +8,13 @@ export async function createBriefingChat(userId: string) {
   const id = generateUUID();
 
   try {
-    // Get all briefings for this user with titles that start with 'Briefing '
-    const existingBriefings = await db
-      .select({ title: chat.title })
+    // Count existing briefing chats for user to determine next number
+    const existing = await db
+      .select({ count: chat.id })
       .from(chat)
-      .where(and(eq(chat.userId, userId), like(chat.title, 'Briefing %')));
+      .where(and(eq(chat.userId, userId), like(chat.title, 'Briefing%')));
 
-    // Extract numbers from existing briefing titles
-    const usedNumbers = existingBriefings
-      .map(b => {
-        const match = b.title.match(/Briefing (\d+)/);
-        return match ? Number.parseInt(match[1], 10) : 0;
-      })
-      .filter(n => !Number.isNaN(n) && n > 0);
-    
-    // Find the first available number
-    let nextNumber = 1;
-    if (usedNumbers.length > 0) {
-      // Sort the used numbers
-      usedNumbers.sort((a, b) => a - b);
-      
-      // Find the first gap or use the next number after the highest
-      for (let i = 0; i < usedNumbers.length; i++) {
-        if (usedNumbers[i] !== i + 1) {
-          nextNumber = i + 1;
-          break;
-        }
-        
-        // If we've checked all numbers and found no gaps
-        if (i === usedNumbers.length - 1) {
-          nextNumber = usedNumbers[i] + 1;
-        }
-      }
-    }
+    const nextNumber = (existing[0]?.count ?? 0) + 1;
     const title = `Briefing ${nextNumber}`;
 
     // Create the chat row first

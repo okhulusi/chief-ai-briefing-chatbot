@@ -1,13 +1,12 @@
 'use client';
 
-import Link from 'next/link';
+// No longer using Link
 import { useRouter } from 'next/navigation';
 import { useWindowSize } from 'usehooks-ts';
 
-
 import { SidebarToggle } from '@/components/sidebar-toggle';
 import { Button } from '@/components/ui/button';
-import { PlusIcon, VercelIcon } from './icons';
+import { PlusIcon } from './icons';
 import { useSidebar } from './ui/sidebar';
 import { memo } from 'react';
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
@@ -42,20 +41,28 @@ function PureChatHeader({
             <Button
               variant="outline"
               className="order-2 md:order-1 md:px-2 px-2 md:h-fit ml-auto md:ml-0"
-              onClick={() => {
-                router.push('/');
-                router.refresh();
+              onClick={async () => {
+                try {
+                  const res = await fetch('/api/briefing', { method: 'POST' });
+                  const data = await res.json();
+                  const id = data.id;
+                  if (id !== undefined) {
+                    router.push(`/chat/${id}`);
+                    router.refresh();
+                  }
+                } catch (_) {
+                  // eslint-disable-next-line no-console
+                  console.error('Failed to create briefing');
+                }
               }}
             >
               <PlusIcon />
-              <span className="md:sr-only">New Chat</span>
+              <span className="sr-only">Generate New Briefing</span>
             </Button>
           </TooltipTrigger>
-          <TooltipContent>New Chat</TooltipContent>
+          <TooltipContent>Generate New Briefing</TooltipContent>
         </Tooltip>
       )}
-
-
     </header>
   );
 }

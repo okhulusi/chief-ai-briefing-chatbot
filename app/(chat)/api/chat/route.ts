@@ -32,10 +32,16 @@ import { geolocation } from '@vercel/functions';
 import { ChatSDKError } from '@/lib/errors';
 import type { ChatMessage } from '@/lib/types';
 import type { ChatModel } from '@/lib/ai/models';
-// Import getStreamContext only where it's actually used
-
 
 export const maxDuration = 60;
+
+// Modified to handle the case when Redis is not available
+export function getStreamContext() {
+  // We're intentionally not using Redis for resumable streams
+  // This function will always return null, which means we'll use
+  // the non-resumable stream path
+  return null;
+}
 
 export async function POST(request: Request) {
   let requestBody: PostRequestBody;
@@ -52,12 +58,10 @@ export async function POST(request: Request) {
       id,
       message,
       selectedChatModel,
-
     }: {
       id: string;
       message: ChatMessage;
       selectedChatModel: ChatModel['id'];
-
     } = requestBody;
 
     const session = await auth();
@@ -141,7 +145,7 @@ export async function POST(request: Request) {
                   'updateDocument',
                   'requestSuggestions',
                 ],
-          // Simple streaming without transformations
+          // Disable smooth streaming to avoid Redis dependency
           // experimental_transform: smoothStream({ chunking: 'word' }),
           tools: {
             getWeather,
@@ -184,7 +188,7 @@ export async function POST(request: Request) {
       },
     });
 
-    // Using direct streaming without resumable streams
+    // We're intentionally not using resumable streams (which require Redis)
     // Instead, we'll use the standard streaming approach directly
     return new Response(stream.pipeThrough(new JsonToSseTransformStream()));
   } catch (error) {
