@@ -125,23 +125,39 @@ export const {
               const dbUser = users[0];
               console.log(`Found user in database with email ${user.email}, ID: ${dbUser.id}`);
               
+              // Calculate expiry time in milliseconds
+              const expiryTime = account.expires_at ? account.expires_at * 1000 : undefined;
+              console.log('Token expiry time:', expiryTime ? new Date(expiryTime).toISOString() : 'undefined');
+              
               // Use the database user ID, not the token ID
-              await updateUserGoogleTokens({
+              const updateResult = await updateUserGoogleTokens({
                 userId: dbUser.id,
                 accessToken: account.access_token,
                 refreshToken: account.refresh_token,
-                expiryTime: account.expires_at ? account.expires_at * 1000 : undefined
+                expiryTime
               });
+              
+              console.log('Token update result:', updateResult);
               
               // Update the token ID to match the database ID
               token.id = dbUser.id;
+              
+              // Force a database commit by performing another query
+              const verifyUser = await getUser(user.email);
+              if (verifyUser.length > 0) {
+                console.log('User verified after token update:', {
+                  id: verifyUser[0].id,
+                  email: verifyUser[0].email,
+                  hasGoogleAccessToken: !!verifyUser[0].googleAccessToken
+                });
+              }
               
               console.log('Successfully saved Google tokens to database for user ID:', dbUser.id);
             } else {
               console.error(`No user found in database with email ${user.email}`);
             }
           } catch (error) {
-            console.error('Failed to save Google tokens to database:', error);
+            console.error('Error saving Google tokens to database:', error);
           }
         } else {
           console.error('Missing required data to save tokens:', { 

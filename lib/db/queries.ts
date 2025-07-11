@@ -110,38 +110,51 @@ export async function updateUserGoogleTokens({
       expiryTime: expiryTime || 'not provided'
     });
     
-    // Only update the refresh token if provided
-    const updateValues: any = { 
+    // Format the expiry time as a date if provided
+    const expiryDate = expiryTime ? new Date(expiryTime) : null;
+    
+    // Create update values object
+    const updateValues: Record<string, any> = {
       googleAccessToken: accessToken,
-      googleTokenExpiry: expiryTime ? new Date(expiryTime) : undefined
+      googleTokenExpiry: expiryDate
     };
     
+    // Add refresh token if provided
     if (refreshToken) {
       updateValues.googleRefreshToken = refreshToken;
     }
     
     console.log('Update values:', updateValues);
     
-    // Directly update the user - we've already verified the user exists by email
+    // Use Drizzle ORM to update the user
     const result = await db
       .update(user)
       .set(updateValues)
-      .where(eq(user.id, userId));
-      
+      .where(eq(user.id, userId))
+      .returning({ id: user.id });
+    
     console.log('Update result:', result);
     
     // Verify the update by fetching the user again
     const updatedUser = await db
       .select({
-        accessToken: user.googleAccessToken,
-        refreshToken: user.googleRefreshToken,
-        tokenExpiry: user.googleTokenExpiry,
+        id: user.id,
+        email: user.email,
+        googleAccessToken: user.googleAccessToken,
+        googleRefreshToken: user.googleRefreshToken,
+        googleTokenExpiry: user.googleTokenExpiry,
       })
       .from(user)
       .where(eq(user.id, userId));
-      
+    
     if (updatedUser.length > 0) {
-      console.log('Updated user tokens:', updatedUser[0]);
+      console.log('Updated user verified:', {
+        id: updatedUser[0].id,
+        email: updatedUser[0].email,
+        hasAccessToken: !!updatedUser[0].googleAccessToken,
+        hasRefreshToken: !!updatedUser[0].googleRefreshToken,
+        tokenExpiry: updatedUser[0].googleTokenExpiry
+      });
     } else {
       console.log('No user found after update, this is unexpected');
     }
