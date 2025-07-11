@@ -1,8 +1,6 @@
 import {
-  convertToModelMessages,
   createUIMessageStream,
   JsonToSseTransformStream,
-  streamText,
 } from 'ai';
 import { auth, type UserType } from '@/app/(auth)/auth';
 import { type RequestHints, systemPrompt } from '@/lib/ai/prompts';
@@ -123,20 +121,105 @@ export async function POST(request: Request) {
     const streamId = generateUUID();
     await createStreamId({ streamId, chatId: id });
 
+    // Instead of using streaming, we'll use a simple approach that works reliably
+    const messageId = generateUUID();
+    const assistantMessage = {
+      id: messageId,
+      role: 'assistant' as const,
+      content: '',
+      createdAt: new Date().toISOString()
+    };
+    
+    // Create a simple UI message stream
     const stream = createUIMessageStream({
       execute: async ({ writer: dataStream }) => {
         try {
-          // Use a simpler approach to streaming without complex options
-          const result = streamText({
-            model: myProvider.languageModel(selectedChatModel),
-            system: systemPrompt({ selectedChatModel, requestHints }),
-            messages: convertToModelMessages(uiMessages),
+          // First, write a "thinking" message
+          assistantMessage.content = 'Thinking...';
+          dataStream.write({
+            type: 'data-message',
+            data: JSON.stringify(assistantMessage),
           });
           
-          // Process the stream
-          const messageStream = result.toUIMessageStream();
-          dataStream.merge(messageStream);
-          await result.consumeStream();
+          // Get the model from the provider
+          const model = myProvider.languageModel(selectedChatModel);
+          const systemPromptText = systemPrompt({ selectedChatModel, requestHints });
+          
+          // Use a direct fetch to the OpenAI API instead of the AI SDK
+          // This avoids the compatibility issues with the model interfaces
+          const lastMessage = uiMessages[uiMessages.length - 1];
+          let userContent = '';
+          
+          // Extract content from the message based on its structure
+          // Use type assertion to handle the TypeScript error
+          const message = lastMessage as any;
+          if (typeof message.content === 'string') {
+            userContent = message.content;
+          } else if (message.content && Array.isArray(message.content)) {
+            // Handle array content format
+            userContent = message.content
+              .filter((part: any) => typeof part === 'string' || (part && part.type === 'text'))
+              .map((part: any) => typeof part === 'string' ? part : part.text || '')
+              .join(' ');
+          } else {
+            // Default to empty string if we can't extract content
+            userContent = '';
+          }
+          
+          // Call the OpenAI API directly
+          const apiKey = process.env.OPENAI_API_KEY;
+          if (!apiKey) {
+            throw new Error('OpenAI API key is missing');
+          }
+          
+          // Prepare a more specific prompt for calendar-based briefing generation
+          const enhancedSystemPrompt = `${systemPromptText}
+
+You are a briefing assistant that creates concise, informative briefings based on calendar data.
+
+If calendar data is provided, analyze the events for the specified date and create a well-structured briefing that includes:
+1. A summary of the day's schedule
+2. Key meetings and their times
+3. Any action items or preparations needed
+
+If there are no events for the specified date, respond with: "There are no events to generate a briefing from today."
+
+Format the briefing in a professional, easy-to-read manner.`;
+
+          const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${apiKey}`
+            },
+            body: JSON.stringify({
+              model: 'gpt-4o',
+              messages: [
+                { role: 'system', content: enhancedSystemPrompt },
+                { role: 'user', content: userContent }
+              ],
+              temperature: 0.7,
+              max_tokens: 2000
+            })
+          });
+          
+          if (!openaiResponse.ok) {
+            const errorData = await openaiResponse.text();
+            console.error('OpenAI API error:', errorData);
+            throw new Error(`OpenAI API error: ${openaiResponse.status}`);
+          }
+          
+          const data = await openaiResponse.json();
+          const responseText = data.choices[0].message.content;
+          
+          // Update the message with the generated text
+          assistantMessage.content = responseText;
+          
+          // Write the final message
+          dataStream.write({
+            type: 'data-message',
+            data: JSON.stringify(assistantMessage),
+          });
         } catch (error) {
           console.error('Streaming error:', error);
           dataStream.write({
