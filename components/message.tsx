@@ -7,7 +7,7 @@ import { DocumentToolCall, DocumentToolResult } from './document';
 import { PencilEditIcon, SparklesIcon } from './icons';
 import { Markdown } from './markdown';
 import { MessageActions } from './message-actions';
-import { PreviewAttachment } from './preview-attachment';
+
 import { Weather } from './weather';
 import equal from 'fast-deep-equal';
 import { cn, sanitizeText } from '@/lib/utils';
@@ -86,16 +86,7 @@ const PurePreviewMessage = ({
                 data-testid={`message-attachments`}
                 className="flex flex-row justify-end gap-2"
               >
-                {attachmentsFromMessage.map((attachment) => (
-                  <PreviewAttachment
-                    key={attachment.url}
-                    attachment={{
-                      name: attachment.filename ?? 'file',
-                      contentType: attachment.mediaType,
-                      url: attachment.url,
-                    }}
-                  />
-                ))}
+                
               </div>
             )}
 

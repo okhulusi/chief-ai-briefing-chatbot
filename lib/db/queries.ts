@@ -31,7 +31,7 @@ import {
 import type { ArtifactKind } from '@/components/artifact';
 import { generateUUID } from '../utils';
 import { generateHashedPassword } from './utils';
-import type { VisibilityType } from '@/components/visibility-selector';
+
 import { ChatSDKError } from '../errors';
 
 // Optionally, if not using email/pass login, you can
@@ -73,7 +73,7 @@ export async function saveChat({
   id: string;
   userId: string;
   title: string;
-  visibility: VisibilityType;
+  visibility: 'private';
 }) {
   try {
     return await db.insert(chat).values({

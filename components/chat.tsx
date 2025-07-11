@@ -10,14 +10,13 @@ import { fetcher, fetchWithErrorHandlers, generateUUID } from '@/lib/utils';
 import { Artifact } from './artifact';
 import { MultimodalInput } from './multimodal-input';
 import { Messages } from './messages';
-import type { VisibilityType } from './visibility-selector';
+
 import { useArtifactSelector } from '@/hooks/use-artifact';
 import { unstable_serialize } from 'swr/infinite';
 import { getChatHistoryPaginationKey } from './sidebar-history';
 import { toast } from './toast';
 import type { Session } from 'next-auth';
 import { useSearchParams } from 'next/navigation';
-import { useChatVisibility } from '@/hooks/use-chat-visibility';
 import { useAutoResume } from '@/hooks/use-auto-resume';
 import { ChatSDKError } from '@/lib/errors';
 import type { Attachment, ChatMessage } from '@/lib/types';
@@ -27,7 +26,6 @@ export function Chat({
   id,
   initialMessages,
   initialChatModel,
-  initialVisibilityType,
   isReadonly,
   session,
   autoResume,
@@ -35,16 +33,12 @@ export function Chat({
   id: string;
   initialMessages: ChatMessage[];
   initialChatModel: string;
-  initialVisibilityType: VisibilityType;
+
   isReadonly: boolean;
   session: Session;
   autoResume: boolean;
 }) {
-  const { visibilityType } = useChatVisibility({
-    chatId: id,
-    initialVisibilityType,
-  });
-
+  
   const { mutate } = useSWRConfig();
   const { setDataStream } = useDataStream();
 
@@ -72,7 +66,7 @@ export function Chat({
             id,
             message: messages.at(-1),
             selectedChatModel: initialChatModel,
-            selectedVisibilityType: visibilityType,
+
             ...body,
           },
         };
@@ -95,7 +89,7 @@ export function Chat({
   });
 
   const searchParams = useSearchParams();
-  const query = searchParams.get('query');
+  const query = searchParams?.get('query');
 
   const [hasAppendedQuery, setHasAppendedQuery] = useState(false);
 
@@ -132,7 +126,7 @@ export function Chat({
         <ChatHeader
           chatId={id}
           selectedModelId={initialChatModel}
-          selectedVisibilityType={initialVisibilityType}
+
           isReadonly={isReadonly}
           session={session}
         />
@@ -161,7 +155,7 @@ export function Chat({
               messages={messages}
               setMessages={setMessages}
               sendMessage={sendMessage}
-              selectedVisibilityType={visibilityType}
+
             />
           )}
         </form>
@@ -181,7 +175,6 @@ export function Chat({
         regenerate={regenerate}
         votes={votes}
         isReadonly={isReadonly}
-        selectedVisibilityType={visibilityType}
       />
     </>
   );
