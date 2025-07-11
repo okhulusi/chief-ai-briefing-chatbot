@@ -1,4 +1,5 @@
 import 'server-only';
+import crypto from 'node:crypto';
 
 import {
   and,
@@ -47,6 +48,39 @@ export async function getUser(email: string): Promise<Array<User>> {
   }
 }
 
+
+export async function findOrCreateUserByEmail(email: string): Promise<User> {
+  try {
+    // Try to find the user first
+    const users = await getUser(email);
+    
+    if (users.length > 0) {
+      console.log(`Found existing user with email ${email}, ID: ${users[0].id}`);
+      return users[0];
+    }
+    
+    // If user doesn't exist, create them
+    console.log(`Creating new user with email ${email}`);
+    const userId = crypto.randomUUID();
+    
+    await db.insert(user).values({
+      id: userId,
+      email
+    });
+    
+    // Return the newly created user
+    const newUsers = await getUser(email);
+    if (newUsers.length === 0) {
+      throw new Error(`Failed to create user with email ${email}`);
+    }
+    
+    return newUsers[0];
+  } catch (error) {
+    console.error('Error in findOrCreateUserByEmail:', error);
+    throw new ChatSDKError('bad_request:database', 'Failed to find or create user');
+  }
+}
+
 export async function createUser(email: string, password: string) {
   const hashedPassword = generateHashedPassword(password);
 
@@ -54,6 +88,99 @@ export async function createUser(email: string, password: string) {
     return await db.insert(user).values({ email, password: hashedPassword });
   } catch (error) {
     throw new ChatSDKError('bad_request:database', 'Failed to create user');
+  }
+}
+
+export async function updateUserGoogleTokens({
+  userId,
+  accessToken,
+  refreshToken,
+  expiryTime,
+}: {
+  userId: string;
+  accessToken: string;
+  refreshToken?: string;
+  expiryTime?: number;
+}) {
+  try {
+    console.log(`Updating Google tokens for user ${userId}`);
+    console.log('Token data:', {
+      accessToken: accessToken ? 'exists' : 'missing',
+      refreshToken: refreshToken ? 'exists' : 'missing',
+      expiryTime: expiryTime || 'not provided'
+    });
+    
+    // Only update the refresh token if provided
+    const updateValues: any = { 
+      googleAccessToken: accessToken,
+      googleTokenExpiry: expiryTime ? new Date(expiryTime) : undefined
+    };
+    
+    if (refreshToken) {
+      updateValues.googleRefreshToken = refreshToken;
+    }
+    
+    console.log('Update values:', updateValues);
+    
+    // Directly update the user - we've already verified the user exists by email
+    const result = await db
+      .update(user)
+      .set(updateValues)
+      .where(eq(user.id, userId));
+      
+    console.log('Update result:', result);
+    
+    // Verify the update by fetching the user again
+    const updatedUser = await db
+      .select({
+        accessToken: user.googleAccessToken,
+        refreshToken: user.googleRefreshToken,
+        tokenExpiry: user.googleTokenExpiry,
+      })
+      .from(user)
+      .where(eq(user.id, userId));
+      
+    if (updatedUser.length > 0) {
+      console.log('Updated user tokens:', updatedUser[0]);
+    } else {
+      console.log('No user found after update, this is unexpected');
+    }
+    
+    return result;
+  } catch (error) {
+    console.error('Failed to update Google tokens:', error);
+    throw new ChatSDKError('bad_request:database', 'Failed to update Google tokens');
+  }
+}
+
+export async function getUserGoogleTokens(userId: string) {
+  try {
+    console.log(`Getting Google tokens for user ${userId}`);
+    const result = await db
+      .select({
+        accessToken: user.googleAccessToken,
+        refreshToken: user.googleRefreshToken,
+        tokenExpiry: user.googleTokenExpiry,
+      })
+      .from(user)
+      .where(eq(user.id, userId));
+      
+    if (result.length === 0) {
+      console.log(`No user found with ID ${userId}`);
+      return null;
+    }
+    
+    console.log('Retrieved tokens:', {
+      hasAccessToken: !!result[0].accessToken,
+      hasRefreshToken: !!result[0].refreshToken,
+      tokenExpiry: result[0].tokenExpiry
+    });
+    
+    return result[0];
+  } catch (error) {
+    console.error('Failed to get Google tokens:', error);
+    // Don't throw an error, just return null to allow graceful fallback
+    return null;
   }
 }
 

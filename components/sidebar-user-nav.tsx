@@ -3,7 +3,7 @@
 import { ChevronUp } from 'lucide-react';
 import Image from 'next/image';
 import type { User } from 'next-auth';
-import { signOut, useSession, signIn } from 'next-auth/react';
+import { signIn, signOut, useSession } from 'next-auth/react';
 import { useTheme } from 'next-themes';
 
 import {
@@ -74,15 +74,35 @@ export function SidebarUserNav({ user }: { user: User }) {
             <DropdownMenuItem
               data-testid="user-nav-item-calendar"
               className="cursor-pointer"
-              onSelect={async () => {
+              onClick={async () => {
                 try {
                   const res = await fetch('/api/calendar/import');
                   const json = await res.json();
-                  if (res.status === 401) {
-                    signIn('google');
+                  
+                  // If we need to authenticate with Google
+                  if (res.status === 401 && json.signIn && json.provider === 'google') {
+                    toast({ 
+                      type: 'success', 
+                      description: 'Please sign in with Google to access your calendar' 
+                    });
+                    
+                    // Use NextAuth signIn function for Google authentication
+                    signIn('google', { callbackUrl: window.location.href });
                     return;
                   }
+                  
+                  // Handle other 401 errors
+                  if (res.status === 401) {
+                    toast({ 
+                      type: 'error', 
+                      description: json.error || 'Authentication required for calendar access' 
+                    });
+                    return;
+                  }
+                  
                   if (!res.ok) throw new Error(json.error || 'Failed to import calendar');
+                  
+                  // Handle successful response
                   if (!json.events || json.events.length === 0) {
                     toast({ type: 'success', description: 'No events found for today!' });
                   } else {
