@@ -2,7 +2,6 @@ import {
   convertToModelMessages,
   createUIMessageStream,
   JsonToSseTransformStream,
-  stepCountIs,
   streamText,
 } from 'ai';
 import { auth, type UserType } from '@/app/(auth)/auth';
@@ -18,11 +17,7 @@ import {
 } from '@/lib/db/queries';
 import { convertToUIMessages, generateUUID } from '@/lib/utils';
 import { generateTitleFromUserMessage } from '../../actions';
-import { createDocument } from '@/lib/ai/tools/create-document';
-import { updateDocument } from '@/lib/ai/tools/update-document';
-import { requestSuggestions } from '@/lib/ai/tools/request-suggestions';
-import { getWeather } from '@/lib/ai/tools/get-weather';
-import { isProductionEnvironment } from '@/lib/constants';
+// No longer using isProductionEnvironment
 import { myProvider } from '@/lib/ai/providers';
 import { entitlementsByUserType } from '@/lib/ai/entitlements';
 import { postRequestBodySchema, type PostRequestBody } from './schema';
@@ -129,46 +124,31 @@ export async function POST(request: Request) {
     await createStreamId({ streamId, chatId: id });
 
     const stream = createUIMessageStream({
-      execute: ({ writer: dataStream }) => {
-        // Modified to use a non-streaming approach
-        const result = streamText({
-          model: myProvider.languageModel(selectedChatModel),
-          system: systemPrompt({ selectedChatModel, requestHints }),
-          messages: convertToModelMessages(uiMessages),
-          stopWhen: stepCountIs(5),
-          experimental_activeTools:
-            selectedChatModel === 'chat-model-reasoning'
-              ? []
-              : [
-                  'getWeather',
-                  'createDocument',
-                  'updateDocument',
-                  'requestSuggestions',
-                ],
-          // Disable smooth streaming to avoid Redis dependency
-          // experimental_transform: smoothStream({ chunking: 'word' }),
-          tools: {
-            getWeather,
-            createDocument: createDocument({ session, dataStream }),
-            updateDocument: updateDocument({ session, dataStream }),
-            requestSuggestions: requestSuggestions({
-              session,
-              dataStream,
+      execute: async ({ writer: dataStream }) => {
+        try {
+          // Use a simpler approach to streaming without complex options
+          const result = streamText({
+            model: myProvider.languageModel(selectedChatModel),
+            system: systemPrompt({ selectedChatModel, requestHints }),
+            messages: convertToModelMessages(uiMessages),
+          });
+          
+          // Process the stream
+          const messageStream = result.toUIMessageStream();
+          dataStream.merge(messageStream);
+          await result.consumeStream();
+        } catch (error) {
+          console.error('Streaming error:', error);
+          dataStream.write({
+            type: 'data-message',
+            data: JSON.stringify({
+              id: generateUUID(),
+              role: 'assistant',
+              content: 'Sorry, I encountered an error while processing your request.',
+              createdAt: new Date().toISOString()
             }),
-          },
-          experimental_telemetry: {
-            isEnabled: isProductionEnvironment,
-            functionId: 'stream-text',
-          },
-        });
-
-        result.consumeStream();
-
-        dataStream.merge(
-          result.toUIMessageStream({
-            sendReasoning: true,
-          }),
-        );
+          });
+        }
       },
       generateId: generateUUID,
       onFinish: async ({ messages }) => {
