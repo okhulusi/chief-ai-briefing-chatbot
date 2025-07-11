@@ -10,7 +10,7 @@ import {
 } from 'react';
 import useSWR, { useSWRConfig } from 'swr';
 import { useDebounceCallback, useWindowSize } from 'usehooks-ts';
-import type { Document, Vote } from '@/lib/db/schema';
+import type { Document } from '@/lib/db/schema';
 import { fetcher } from '@/lib/utils';
 import { MultimodalInput } from './multimodal-input';
 import { Toolbar } from './toolbar';
@@ -64,7 +64,6 @@ function PureArtifact({
   messages,
   setMessages,
   regenerate,
-  votes,
   isReadonly,
 
 }: {
@@ -77,7 +76,6 @@ function PureArtifact({
   setAttachments: Dispatch<SetStateAction<Attachment[]>>;
   messages: ChatMessage[];
   setMessages: UseChatHelpers<ChatMessage>['setMessages'];
-  votes: Array<Vote> | undefined;
   sendMessage: UseChatHelpers<ChatMessage>['sendMessage'];
   regenerate: UseChatHelpers<ChatMessage>['regenerate'];
   isReadonly: boolean;
@@ -314,7 +312,6 @@ function PureArtifact({
                 <ArtifactMessages
                   chatId={chatId}
                   status={status}
-                  votes={votes}
                   messages={messages}
                   setMessages={setMessages}
                   regenerate={regenerate}
@@ -499,13 +496,10 @@ function PureArtifact({
   );
 }
 
-export const Artifact = memo(PureArtifact, (prevProps, nextProps) => {
-  if (prevProps.status !== nextProps.status) return false;
-  if (!equal(prevProps.votes, nextProps.votes)) return false;
-  if (prevProps.input !== nextProps.input) return false;
-  if (!equal(prevProps.messages, nextProps.messages.length)) return false;
-
-    return false;
-
+export const Artifact = memo(PureArtifact, (prev, next) => {
+  if (prev.status !== next.status) return false;
+  if (prev.input !== next.input) return false;
+  if (prev.messages.length !== next.messages.length) return false;
+  if (!equal(prev.messages, next.messages)) return false;
   return true;
 });

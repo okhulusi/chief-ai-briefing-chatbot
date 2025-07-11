@@ -20,16 +20,12 @@ import {
   user,
   chat,
   type User,
-  document,
-  type Suggestion,
-  suggestion,
   message,
 
   type DBMessage,
   type Chat,
   stream,
 } from './schema';
-import type { ArtifactKind } from '@/components/artifact';
 import { generateHashedPassword } from './utils';
 
 import { ChatSDKError } from '../errors';
@@ -184,6 +180,8 @@ export async function getChatById({ id }: { id: string }) {
     const [selectedChat] = await db.select().from(chat).where(eq(chat.id, id));
     return selectedChat;
   } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error('getChatById error', error);
     throw new ChatSDKError('bad_request:database', 'Failed to get chat by id');
   }
 }
@@ -218,135 +216,40 @@ export async function getMessagesByChatId({ id }: { id: string }) {
 export async function voteMessage() {
   return null;
 }
-
-export async function getVotesByChatId() {
-  return [];
-}
-
-export async function saveDocument({
-  id,
-  title,
-  kind,
-  content,
-  userId,
-}: {
+export async function saveDocument(_: {
   id: string;
   title: string;
-  kind: ArtifactKind;
+  kind: any;
   content: string;
   userId: string;
 }) {
-  try {
-    return await db
-      .insert(document)
-      .values({
-        id,
-        title,
-        kind,
-        content,
-        userId,
-        createdAt: new Date(),
-      })
-      .returning();
-  } catch (error) {
-    throw new ChatSDKError('bad_request:database', 'Failed to save document');
-  }
+  console.warn('saveDocument noop - document feature removed');
+  return null;
 }
 
-export async function getDocumentsById({ id }: { id: string }) {
-  try {
-    const documents = await db
-      .select()
-      .from(document)
-      .where(eq(document.id, id))
-      .orderBy(asc(document.createdAt));
-
-    return documents;
-  } catch (error) {
-    throw new ChatSDKError(
-      'bad_request:database',
-      'Failed to get documents by id',
-    );
-  }
+export async function getDocumentsById(_: { id: string }) {
+  return [] as any[];
 }
 
-export async function getDocumentById({ id }: { id: string }) {
-  try {
-    const [selectedDocument] = await db
-      .select()
-      .from(document)
-      .where(eq(document.id, id))
-      .orderBy(desc(document.createdAt));
-
-    return selectedDocument;
-  } catch (error) {
-    throw new ChatSDKError(
-      'bad_request:database',
-      'Failed to get document by id',
-    );
-  }
+export async function getDocumentById(_: { id: string }) {
+  return null;
 }
 
-export async function deleteDocumentsByIdAfterTimestamp({
-  id,
-  timestamp,
-}: {
+export async function deleteDocumentsByIdAfterTimestamp(_: {
   id: string;
   timestamp: Date;
 }) {
-  try {
-    await db
-      .delete(suggestion)
-      .where(
-        and(
-          eq(suggestion.documentId, id),
-          gt(suggestion.documentCreatedAt, timestamp),
-        ),
-      );
-
-    return await db
-      .delete(document)
-      .where(and(eq(document.id, id), gt(document.createdAt, timestamp)))
-      .returning();
-  } catch (error) {
-    throw new ChatSDKError(
-      'bad_request:database',
-      'Failed to delete documents by id after timestamp',
-    );
-  }
+  return [] as any[];
 }
 
-export async function saveSuggestions({
-  suggestions,
-}: {
-  suggestions: Array<Suggestion>;
-}) {
-  try {
-    return await db.insert(suggestion).values(suggestions);
-  } catch (error) {
-    throw new ChatSDKError(
-      'bad_request:database',
-      'Failed to save suggestions',
-    );
-  }
+// Suggestions feature removed; keep stub for type safety
+export async function saveSuggestions({ suggestions }: { suggestions: Array<any> }) {
+  console.warn('saveSuggestions noop - suggestions feature removed');
+  return [];
 }
 
-export async function getSuggestionsByDocumentId({
-  documentId,
-}: {
-  documentId: string;
-}) {
-  try {
-    return await db
-      .select()
-      .from(suggestion)
-      .where(and(eq(suggestion.documentId, documentId)));
-  } catch (error) {
-    throw new ChatSDKError(
-      'bad_request:database',
-      'Failed to get suggestions by document id',
-    );
-  }
+export async function getSuggestionsByDocumentId({ documentId }: { documentId: string }) {
+  return [] as any[];
 }
 
 export async function getMessageById({ id }: { id: string }) {

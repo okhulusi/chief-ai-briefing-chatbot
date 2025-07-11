@@ -48,10 +48,13 @@ export function AppSidebar({ user }: { user: User | undefined }) {
                   onSelect={async () => {
                     try {
                       const res = await fetch('/api/briefing', { method: 'POST' });
-                      const { id } = await res.json();
-                      setOpenMobile(false);
-                      router.push(`/chat/${id}`);
-                      router.refresh();
+                      const data = await res.json();
+                      const id = data.id;
+                      if (id !== undefined) {
+                        setOpenMobile(false);
+                        router.push(`/chat/${id}`);
+                        router.refresh();
+                      }
                     } catch (_) {
                       // eslint-disable-next-line no-console
                       console.error('Failed to create briefing');

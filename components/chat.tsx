@@ -3,10 +3,9 @@
 import { DefaultChatTransport } from 'ai';
 import { useChat } from '@ai-sdk/react';
 import { useEffect, useState } from 'react';
-import useSWR, { useSWRConfig } from 'swr';
+import { useSWRConfig } from 'swr';
 import { ChatHeader } from '@/components/chat-header';
-import type { Vote } from '@/lib/db/schema';
-import { fetcher, fetchWithErrorHandlers, generateUUID } from '@/lib/utils';
+import { fetchWithErrorHandlers, generateUUID } from '@/lib/utils';
 import { Artifact } from './artifact';
 import { MultimodalInput } from './multimodal-input';
 import { Messages } from './messages';
@@ -93,7 +92,10 @@ export function Chat({
 
   const [hasAppendedQuery, setHasAppendedQuery] = useState(false);
 
-  useEffect(() => {
+  // Vote feature removed
+const votes = undefined;
+
+useEffect(() => {
     if (query && !hasAppendedQuery) {
       sendMessage({
         role: 'user' as const,
@@ -106,11 +108,6 @@ export function Chat({
       }
     }
   }, [query, sendMessage, hasAppendedQuery, id]);
-
-  const { data: votes } = useSWR<Array<Vote>>(
-    messages.length >= 2 ? `/api/vote?chatId=${id}` : null,
-    fetcher,
-  );
 
   const [attachments, setAttachments] = useState<Array<Attachment>>([]);
   const isArtifactVisible = useArtifactSelector((state) => state.isVisible);
@@ -136,8 +133,7 @@ export function Chat({
         <Messages
           chatId={id}
           status={status}
-          votes={votes}
-          messages={messages}
+           messages={messages}
           setMessages={setMessages}
           regenerate={regenerate}
           isReadonly={isReadonly}
@@ -175,7 +171,6 @@ export function Chat({
         messages={messages}
         setMessages={setMessages}
         regenerate={regenerate}
-        votes={votes}
         isReadonly={isReadonly}
       />
     </>
