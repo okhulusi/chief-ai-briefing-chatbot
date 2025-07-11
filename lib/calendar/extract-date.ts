@@ -51,23 +51,23 @@ export async function extractDateAndFetchEvents(userMessage: string): Promise<{
         messages: [
           { 
             role: 'system', 
-            content: `Extract the date mentioned in the user's message, including future dates. 
-            Return ONLY a JSON object with the format: 
-            { 
-              "date": "YYYY-MM-DD", 
-              "confidence": "high|medium|low",
-              "reasoning": "brief explanation"
-            }
-            Handle all date formats including:
-            - Relative dates (today, tomorrow, next week)
-            - Specific dates with or without year (July 16th, July 16th 2025)
-            - Numeric dates (7/16/2025, 16/7/2025)
+            content: `You are a date extraction expert. Your task is to identify the specific date a user is asking about and return it in a JSON object. 
             
-            If a date is mentioned without a year, assume it's in the future if it's after today's date this year,
-            otherwise assume it's next year.
+            Current context for the user:
+            - Today's Date: ${new Date().toISOString().split('T')[0]}
+            - User's Timezone: ${Intl.DateTimeFormat().resolvedOptions().timeZone}
             
-            If no date is mentioned, use today's date.
-            Do not include any other text in your response.` 
+            Please follow these rules:
+            1.  Interpret all relative dates (e.g., "today", "tomorrow") based on the provided current date and user's timezone.
+            2.  If a date is mentioned without a year (e.g., "July 17th"), assume it's for the upcoming instance of that date in the user's timezone.
+            3.  If no specific date is mentioned, default to today's date in the user's timezone.
+            4.  Return ONLY a JSON object with the following format:
+                {
+                  "date": "YYYY-MM-DD",
+                  "confidence": "high|medium|low",
+                  "reasoning": "A brief explanation of how you determined the date."
+                }
+            5.  Do not include any other text, greetings, or explanations in your response.`
           },
           { role: 'user', content: userMessage }
         ],
@@ -88,7 +88,7 @@ export async function extractDateAndFetchEvents(userMessage: string): Promise<{
     
     // Parse the JSON response
     let parsedDate: Date;
-    let confidence: string = 'low'; // Default confidence
+    let confidence = 'low'; // Default confidence
     try {
       // Try to extract JSON if it's wrapped in other text
       let jsonStr = extractedContent;

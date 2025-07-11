@@ -138,15 +138,16 @@ export async function POST(request: Request) {
           };
           await saveMessages({ messages: [fallbackMessage] });
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(fallbackMessage)}\n\n`));
-          controller.close();
         };
 
         if (!dateResult || dateResult.confidence !== 'high') {
-          return sendFallback('I was not confident about the date you requested. Could you please specify the date more clearly?');
+          await sendFallback('I was not confident about the date you requested. Could you please specify the date more clearly?');
+          return;
         }
 
         if (!dateResult.events || dateResult.events.length === 0) {
-          return sendFallback(`No calendar events found for ${dateResult.formattedDate}.`);
+          await sendFallback(`No calendar events found for ${dateResult.formattedDate}.`);
+          return;
         }
 
         const eventList = dateResult.events.map(ev => `- ${ev.summary}${ev.start ? ` (${ev.start})` : ''}${ev.location ? ` @ ${ev.location}` : ''}`).join('\n');
@@ -161,7 +162,8 @@ export async function POST(request: Request) {
         const openaiApiKey = process.env.OPENAI_API_KEY;
         if (!openaiApiKey) {
           console.error('OpenAI API key is missing');
-          return sendFallback('The service is temporarily unavailable due to a configuration issue.');
+          await sendFallback('The service is temporarily unavailable due to a configuration issue.');
+          return;
         }
 
         const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -181,28 +183,24 @@ export async function POST(request: Request) {
 
         if (!openaiRes.ok || !openaiRes.body) {
           console.error('OpenAI API request failed:', await openaiRes.text());
-          return sendFallback('Sorry, I was unable to generate a response. Please try again.');
+          await sendFallback('Sorry, I was unable to generate a response. Please try again.');
+          return;
         }
 
-        const reader = openaiRes.body.getReader();
         const decoder = new TextDecoder();
-        let buffer = '';
         let assistantText = '';
         const assistantId = generateUUID();
 
-        while (true) {
-          const { value, done } = await reader.read();
-          if (done) break;
-
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split('\n');
-          buffer = lines.pop() || '';
-
+        // Use a more robust `for await...of` loop to process the stream
+        for await (const chunk of openaiRes.body as any) {
+          const lines = decoder.decode(chunk).split('\n');
           for (const line of lines) {
             if (line.startsWith('data: ')) {
               const data = line.substring(6);
-              if (data === '[DONE]') {
-                break;
+              if (data.trim() === '[DONE]') {
+                // The stream is finished, so we can exit the start function.
+                // The controller will be closed automatically.
+                return;
               }
               try {
                 const parsed = JSON.parse(data);
@@ -213,22 +211,26 @@ export async function POST(request: Request) {
                   controller.enqueue(encoder.encode(`data: ${JSON.stringify(partialMessage)}\n\n`));
                 }
               } catch (e) {
-                console.error('Error parsing stream chunk:', e);
+                // This can happen if the stream sends a partial JSON object.
+                // We can safely ignore it and wait for the next chunk.
+                // console.error('Error parsing stream chunk:', e);
               }
             }
           }
         }
 
-        await saveMessages({
-          messages: [{
-            id: assistantId,
-            chatId,
-            role: 'assistant',
-            parts: [{ type: 'text', text: assistantText }],
-            attachments: [],
-            createdAt: new Date(),
-          }],
-        });
+        if (assistantText) {
+            await saveMessages({
+              messages: [{
+                id: assistantId,
+                chatId,
+                role: 'assistant',
+                parts: [{ type: 'text', text: assistantText }],
+                attachments: [],
+                createdAt: new Date(),
+              }],
+            });
+        }
 
         controller.close();
       },
