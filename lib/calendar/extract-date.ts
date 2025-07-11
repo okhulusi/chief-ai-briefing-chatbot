@@ -31,6 +31,7 @@ export async function extractDateAndFetchEvents(userMessage: string): Promise<{
   date: Date;
   formattedDate: string;
   events: CalendarEvent[] | null;
+  confidence: string;
 }> {
   try {
     // Use OpenAI to extract the date from the user's message
@@ -87,6 +88,7 @@ export async function extractDateAndFetchEvents(userMessage: string): Promise<{
     
     // Parse the JSON response
     let parsedDate: Date;
+    let confidence: string = 'low'; // Default confidence
     try {
       // Try to extract JSON if it's wrapped in other text
       let jsonStr = extractedContent;
@@ -101,7 +103,8 @@ export async function extractDateAndFetchEvents(userMessage: string): Promise<{
       
       const dateInfo: { date: string; confidence: string; reasoning: string } = JSON.parse(jsonStr);
       parsedDate = new Date(dateInfo.date);
-      console.log(`Extracted date: ${parsedDate.toDateString()} (Confidence: ${dateInfo.confidence})`);
+      confidence = dateInfo.confidence.toLowerCase();
+      console.log(`Extracted date: ${parsedDate.toDateString()} (Confidence: ${confidence})`);
       console.log(`Reasoning: ${dateInfo.reasoning}`);
     } catch (error) {
       console.error('Error parsing date from OpenAI response:', error);
@@ -120,7 +123,8 @@ export async function extractDateAndFetchEvents(userMessage: string): Promise<{
     return {
       date: parsedDate,
       formattedDate: parsedDate.toDateString(),
-      events
+      events,
+      confidence
     };
   } catch (error) {
     console.error('Error extracting date and fetching events:', error);
@@ -129,7 +133,8 @@ export async function extractDateAndFetchEvents(userMessage: string): Promise<{
     return {
       date: today,
       formattedDate: today.toDateString(),
-      events: null
+      events: null,
+      confidence: 'low' // Default to low confidence on error
     };
   }
 }
