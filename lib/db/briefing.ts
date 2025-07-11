@@ -35,6 +35,7 @@ export async function createBriefingChat(userId: string) {
   // Try to insert the welcome message; if it fails just log
   try {
     await db.insert(message).values({
+      id: generateUUID(),
       chatId: id,
       role: 'assistant',
       createdAt: new Date(),
