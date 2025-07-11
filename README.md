@@ -1,60 +1,157 @@
-<a href="https://chat.vercel.ai/">
-  <img alt="Next.js 14 and App Router-ready AI chatbot." src="app/(chat)/opengraph-image.png">
-  <h1 align="center">Chat SDK</h1>
-</a>
+# ChiefAI Briefing Bot Demo App
 
-<p align="center">
-    Chat SDK is a free, open-source template built with Next.js and the AI SDK that helps you quickly build powerful chatbot applications.
-</p>
+## Overview
 
-<p align="center">
-  <a href="https://chat-sdk.dev"><strong>Read Docs</strong></a> ·
-  <a href="#features"><strong>Features</strong></a> ·
-  <a href="#model-providers"><strong>Model Providers</strong></a> ·
-  <a href="#deploy-your-own"><strong>Deploy Your Own</strong></a> ·
-  <a href="#running-locally"><strong>Running locally</strong></a>
-</p>
-<br/>
+ChiefAI Briefing Bot is an AI-powered assistant designed to generate concise, informative daily briefings based on a user's calendar data. The application connects with Google Calendar, analyzes upcoming events, and creates well-structured briefings that include schedule summaries, key meetings, and action items.
 
-## Features
+**Most of this code was generated using Windsurf + GPT-4.1, GPT-3o, and Claude 3.7 Sonnet.**
 
-- [Next.js](https://nextjs.org) App Router
-  - Advanced routing for seamless navigation and performance
-  - React Server Components (RSCs) and Server Actions for server-side rendering and increased performance
-- [AI SDK](https://sdk.vercel.ai/docs)
-  - Unified API for generating text, structured objects, and tool calls with LLMs
-  - Hooks for building dynamic chat and generative user interfaces
-  - Supports xAI (default), OpenAI, Fireworks, and other model providers
-- [shadcn/ui](https://ui.shadcn.com)
-  - Styling with [Tailwind CSS](https://tailwindcss.com)
-  - Component primitives from [Radix UI](https://radix-ui.com) for accessibility and flexibility
-- Data Persistence
-  - [Neon Serverless Postgres](https://vercel.com/marketplace/neon) for saving chat history and user data
-  - [Vercel Blob](https://vercel.com/storage/blob) for efficient file storage
-- [Auth.js](https://authjs.dev)
-  - Simple and secure authentication
+## Key Features
 
-## Model Providers
+- **Calendar Integration**: Connects with Google Calendar to fetch daily events
+- **AI-Powered Briefings**: Generates concise, well-structured briefings based on calendar data
+- **Chat Interface**: Allows users to interact with the AI assistant through a chat interface
+- **Multiple Briefings**: Users can create and manage multiple briefings
+- **Responsive Design**: Works seamlessly across desktop and mobile devices
 
-This template ships with [xAI](https://x.ai) `grok-2-1212` as the default chat model. However, with the [AI SDK](https://sdk.vercel.ai/docs), you can switch LLM providers to [OpenAI](https://openai.com), [Anthropic](https://anthropic.com), [Cohere](https://cohere.com/), and [many more](https://sdk.vercel.ai/providers/ai-sdk-providers) with just a few lines of code.
+## Technology Stack
 
-## Deploy Your Own
+### Frontend
 
-You can deploy your own version of the Next.js AI Chatbot to Vercel.
+- **Next.js 15**: React framework with App Router
+- **React 19**: UI library
+- **Tailwind CSS**: Utility-first CSS framework
+- **SWR**: React Hooks for data fetching
+- **Framer Motion**: Animation library
+- **Radix UI**: Unstyled, accessible UI components
 
-## Running locally
+### Backend
 
-You will need to use the environment variables [defined in `.env.example`](.env.example) to run Next.js AI Chatbot. It's recommended you use [Vercel Environment Variables](https://vercel.com/docs/projects/environment-variables) for this, but a `.env` file is all that is necessary.
+- **Next.js API Routes**: Serverless functions
+- **OpenAI API**: Powers the AI briefing generation (GPT-4o)
+- **Google Calendar API**: Fetches calendar events
+- **NextAuth.js**: Authentication with Google OAuth
 
-> Note: You should not commit your `.env` file or it will expose secrets that will allow others to control access to your various AI and authentication provider accounts.
+### Database
 
-1. Install Vercel CLI: `npm i -g vercel`
-2. Link local instance with Vercel and GitHub accounts (creates `.vercel` directory): `vercel link`
-3. Download your environment variables: `vercel env pull`
+- **PostgreSQL**: Primary database
+- **Drizzle ORM**: Type-safe SQL query builder
+- **Vercel Postgres**: Managed PostgreSQL service
 
-```bash
-pnpm install
-pnpm dev
+## Architecture
+
+The application follows a modern Next.js architecture with the App Router pattern. The frontend and backend are tightly integrated, with API routes handling server-side operations and React components managing the UI. The application uses a PostgreSQL database with Drizzle ORM for data persistence.
+
+Key architectural components include:
+
+1. **Authentication Flow**: Google OAuth via NextAuth.js
+2. **Calendar Integration**: API routes to fetch and process Google Calendar data
+3. **AI Processing**: OpenAI API integration for generating briefings
+4. **Data Persistence**: PostgreSQL database for storing chats and user data
+
+## Project Structure
+
+```text
+/
+├── app/                  # Next.js App Router structure
+│   ├── (auth)/           # Authentication-related routes
+│   ├── (chat)/           # Chat interface routes
+│   └── api/              # API routes
+│       ├── auth/         # Authentication endpoints
+│       ├── briefing/     # Briefing generation endpoints
+│       ├── calendar/     # Calendar integration endpoints
+│       └── chat/         # Chat functionality endpoints
+├── components/           # React components
+├── hooks/                # Custom React hooks
+├── lib/                  # Utility functions and libraries
+│   ├── ai/               # AI-related utilities
+│   ├── db/               # Database schema and utilities
+│   └── types.ts          # TypeScript type definitions
+├── public/               # Static assets
+└── tests/                # Test files
 ```
 
-Your app template should now be running on [localhost:3000](http://localhost:3000).
+## Key Code Files
+
+### Core Application Files
+
+- `app/(chat)/page.tsx` - Main application page with chat interface
+- `app/(chat)/chat/[id]/page.tsx` - Individual chat/briefing page
+- `app/(auth)/auth.ts` - Authentication configuration with Google OAuth
+- `app/api/briefing/route.ts` - API endpoint for creating new briefings
+- `app/api/calendar/import/route.ts` - API endpoint for importing Google Calendar data
+- `app/api/chat/route.ts` - API endpoint for chat functionality and AI processing
+
+### Component Files
+
+- `components/app-sidebar.tsx` - Sidebar navigation with briefing management
+- `components/chat.tsx` - Main chat interface component
+- `components/message.tsx` - Individual message rendering component
+- `components/greeting.tsx` - Welcome screen component
+- `components/sidebar-history.tsx` - Chat history management component
+
+### Database and Utilities
+
+- `lib/db/schema.ts` - Database schema definitions using Drizzle ORM
+- `lib/db/briefing.ts` - Briefing creation and management functions
+- `lib/ai/prompts.ts` - System prompts for AI briefing generation
+- `lib/types.ts` - TypeScript type definitions for the application
+
+### Database Schema
+
+The application uses Drizzle ORM with a PostgreSQL database (Neon). The database schema includes:
+
+- `User` - User account information
+- `Chat` - Briefing metadata and settings
+- `Message` - Individual chat messages
+- `Stream` - Streaming data for real-time updates
+
+## Application Flow
+
+### User Journey
+
+1. **Authentication**: Users sign in with their Google account, which grants access to their calendar data
+2. **Briefing Creation**: Users can create a new briefing by clicking the "Generate new Briefing" button
+3. **Calendar Import**: Users can import their calendar data by clicking the "Import Calendar" button
+4. **Briefing Interaction**: Users can interact with the AI assistant through a chat interface to get information about their schedule
+
+### AI Processing
+
+The application uses OpenAI's GPT-4o model to generate briefings based on calendar data. The process works as follows:
+
+1. Calendar data is fetched from the Google Calendar API
+2. The data is processed and formatted for the AI model
+3. A system prompt instructs the model to create a well-structured briefing
+4. The model generates a response that includes:
+   - A summary of the day's schedule
+   - Key meetings and their times
+   - Any action items or preparations needed
+5. If no events are found, the model returns a message indicating there are no events to generate a briefing from
+
+## Configuration
+
+All APIs and services (OpenAI, Google Calendar, PostgreSQL, etc.) are configured through environment variables. Vercel makes this configuration process super easy with its environment management system, allowing you to securely store and access all necessary credentials without hardcoding them in your codebase. The `vercel env pull` command automatically downloads all your configured environment variables to a local `.env.local` file, making local development seamless.
+
+## Running Locally
+
+1. Clone the repository
+2. Install dependencies: `npm install` or `pnpm install`
+3. Get environment variables from Vercel:
+
+   ```bash
+   npm install -g vercel
+   vercel link  # Link to your Vercel project
+   vercel env pull  # Download environment variables to .env.local
+   ```
+
+4. Run the development server: `npm run dev` or `pnpm dev`
+5. Open [http://localhost:3000](http://localhost:3000) in your browser
+
+## Deployment
+
+This application is designed to be deployed on Vercel. To deploy your own version:
+
+1. Fork this repository
+2. Connect your fork to Vercel
+3. Configure the required environment variables
+4. Deploy!
