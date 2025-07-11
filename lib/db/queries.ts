@@ -13,7 +13,6 @@ import {
   type SQL,
 } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/postgres-js';
-import { sql } from 'drizzle-orm';
 import postgres from 'postgres';
 
 import {
@@ -86,12 +85,15 @@ export async function saveChat({
 
 export async function deleteChatById({ id }: { id: string }) {
   try {
-    // votes table removed; delete messages then streams using raw SQL to avoid identifier case issues
-    await db.execute(sql`delete from "Message_v2" where "chatId" = ${id}`);
-    await db.execute(sql`delete from "Stream" where "chatId" = ${id}`);
-
-    const [chatsDeleted] = await db.execute(sql`delete from "Chat" where "id" = ${id} returning *`);
-    return chatsDeleted;
+    // First delete all messages associated with this chat
+    await db.delete(message).where(eq(message.chatId, id));
+    
+    // Then delete all streams associated with this chat
+    await db.delete(stream).where(eq(stream.chatId, id));
+    
+    // Finally delete the chat itself
+    const result = await db.delete(chat).where(eq(chat.id, id)).returning();
+    return result[0];
   } catch (error) {
     // eslint-disable-next-line no-console
     console.error('deleteChatById error', error);
